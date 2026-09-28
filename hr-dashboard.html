@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HR system · Off days & team</title>
+  <!-- Font Awesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    body {
+      background: #f5f7fb;
+      padding: 24px;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    .app {
+      max-width: 1400px;
+      width: 100%;
+      background: white;
+      border-radius: 32px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05), 0 6px 12px rgba(0, 0, 0, 0.03);
+      padding: 32px;
+    }
+
+    /* header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      font-weight: 600;
+      color: #1e2b3c;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header h1 i {
+      background: #2a5c8f;
+      color: white;
+      padding: 8px;
+      border-radius: 14px;
+      font-size: 20px;
+    }
+
+    .stats {
+      display: flex;
+      gap: 20px;
+      background: #f0f4fa;
+      padding: 12px 24px;
+      border-radius: 100px;
+    }
+
+    .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 500;
+      color: #1e2b3c;
+    }
+
+    .stat-item i {
+      color: #2a5c8f;
+      font-size: 18px;
+    }
+
+    /* layout grid */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 28px;
+    }
+
+    @media (max-width: 900px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* employee table */
+    .card {
+      background: white;
+      border-radius: 24px;
+      border: 1px solid #e9edf4;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+    }
+
+    .card-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid #e9edf4;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .card-header h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #1e2b3c;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card-header h2 i {
+      color: #2a5c8f;
+    }
+
+    .btn {
+      border: none;
+      background: #2a5c8f;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 30px;
+      font-weight: 500;
+      font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: 0.2s;
+      border: 1px solid transparent;
+    }
+
+    .btn:hover {
+      background: #1d4670;
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid #cbd5e1;
+      color: #1e2b3c;
+    }
+
+    .btn-outline:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+
+    .btn-icon {
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: #f1f5f9;
+      color: #1e2b3c;
+      border: none;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .btn-icon:hover {
+      background: #e2e8f0;
+    }
+
+    .btn-danger {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+
+    .btn-danger:hover {
+      background: #fecaca;
+    }
+
+    /* table */
+    .table-wrapper {
+      overflow-x: auto;
+      padding: 0 8px 8px 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th {
+      text-align: left;
+      padding: 16px 12px;
+      color: #64748b;
+      font-weight: 500;
+      font-size: 13px;
+      letter-spacing: 0.3px;
+      border-bottom: 1px solid #e9edf4;
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 14px 12px;
+      border-bottom: 1px solid #f0f4fa;
+      color: #1e2b3c;
+      vertical-align: middle;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .employee-cell {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .avatar {
+      width: 36px;
+      height: 36px;
+      background: #dbeafe;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      color: #1e4a7a;
+      font-size: 14px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 30px;
+      font-size: 12px;
+      font-weight: 500;
+      background: #e9edf4;
+      color: #334155;
+    }
+
+    .badge-green {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .badge-amber {
+      background: #fef9c3;
+      color: #854d0e;
+    }
+
+    .badge-blue {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    .action-group {
+      display: flex;
+      gap: 6px;
+    }
+
+    /* off days panel */
+    .offday-list {
+      padding: 16px 20px 20px 20px;
+    }
+
+    .offday-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 0;
+      border-bottom: 1px solid #f0f4fa;
+    }
+
+    .offday-item:last-child {
+      border-bottom: none;
+    }
+
+    .offday-info {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .offday-date {
+      background: #f1f5f9;
+      border-radius: 12px;
+      padding: 8px 12px;
+      text-align: center;
+      min-width: 60px;
+    }
+
+    .offday-date .day {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1e2b3c;
+      line-height: 1.2;
+    }
+
+    .offday-date .month {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: #64748b;
+      font-weight: 600;
+    }
+
+    .offday-details .name {
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .offday-details .type {
+      font-size: 13px;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 2px;
+    }
+
+    .type-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 10px;
+      display: inline-block;
+    }
+
+    .dot-vacation { background: #3b82f6; }
+    .dot-sick { background: #ef4444; }
+    .dot-personal { background: #f59e0b; }
+    .dot-holiday { background: #10b981; }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #94a3b8;
+      font-size: 15px;
+    }
+
+    .empty-state i {
+      font-size: 32px;
+      margin-bottom: 12px;
+      opacity: 0.5;
+    }
+
+    /* modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      visibility: hidden;
+      opacity: 0;
+      transition: 0.2s;
+    }
+
+    .modal-overlay.active {
+      visibility: visible;
+      opacity: 1;
+    }
+
+    .modal {
+      background: white;
+      border-radius: 28px;
+      width: 90%;
+      max-width: 500px;
+      padding: 28px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      transform: scale(0.95);
+      transition: 0.2s;
+    }
+
+    .modal-overlay.active .modal {
+      transform: scale(1);
+    }
+
+    .modal h3 {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: #1e2b3c;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: #334155;
+    }
+
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid #cbd5e1;
+      border-radius: 14px;
+      font-size: 15px;
+      outline: none;
+      transition: 0.2s;
+      background: #f8fafc;
+    }
+
+    .form-group input:focus, .form-group select:focus {
+      border-color: #2a5c8f;
+      box-shadow: 0 0 0 3px rgba(42, 92, 143, 0.15);
+      background: white;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 26px;
+    }
+
+    .btn-secondary {
+      background: #f1f5f9;
+      color: #1e2b3c;
+    }
+
+    .btn-secondary:hover {
+      background: #e2e8f0;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <!-- Header -->
+  <div class="header">
+    <h1>
+      <i class="fas fa-users-cog"></i>
+      HR manager
+    </h1>
+    <div class="stats" id="statsPanel">
+      <div class="stat-item"><i class="fas fa-user-tie"></i> <span id="totalEmployees">0</span> employees</div>
+      <div class="stat-item"><i class="fas fa-calendar-alt"></i> <span id="offTodayCount">0</span> off today</div>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="main-grid">
+    <!-- LEFT: Employee table -->
+    <div class="card">
+      <div class="card-header">
+        <h2><i class="fas fa-address-book"></i> Team directory</h2>
+        <button class="btn" id="addEmployeeBtn"><i class="fas fa-plus"></i> New employee</button>
+      </div>
+      <div class="table-wrapper">
+        <table id="employeeTable">
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Role</th>
+              <th>Department</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="employeeTableBody">
+            <!-- filled by JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- RIGHT: Off days panel -->
+    <div class="card">
+      <div class="card-header">
+        <h2><i class="fas fa-umbrella-beach"></i> Upcoming off days</h2>
+        <button class="btn btn-outline btn-sm" id="addOffDayBtn"><i class="fas fa-plus"></i> Add</button>
+      </div>
+      <div class="offday-list" id="offDayList">
+        <!-- dynamic off days -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Add Employee -->
+<div class="modal-overlay" id="employeeModal">
+  <div class="modal">
+    <h3><i class="fas fa-user-plus" style="margin-right: 10px;"></i>Add employee</h3>
+    <div class="form-group">
+      <label>Full name</label>
+      <input type="text" id="empName" placeholder="e.g. Alex Rivera" />
+    </div>
+    <div class="form-group">
+      <label>Role</label>
+      <input type="text" id="empRole" placeholder="e.g. Product Designer" />
+    </div>
+    <div class="form-group">
+      <label>Department</label>
+      <select id="empDept">
+        <option value="Engineering">Engineering</option>
+        <option value="Design">Design</option>
+        <option value="Marketing">Marketing</option>
+        <option value="Sales">Sales</option>
+        <option value="HR">HR</option>
+        <option value="Finance">Finance</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Status</label>
+      <select id="empStatus">
+        <option value="Active">Active</option>
+        <option value="Remote">Remote</option>
+        <option value="On leave">On leave</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="cancelEmpModal">Cancel</button>
+      <button class="btn" id="saveEmployeeBtn">Save employee</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Add Off Day -->
+<div class="modal-overlay" id="offDayModal">
+  <div class="modal">
+    <h3><i class="fas fa-calendar-plus" style="margin-right: 10px;"></i>Request off day</h3>
+    <div class="form-group">
+      <label>Employee</label>
+      <select id="offEmployeeSelect"></select>
+    </div>
+    <div class="form-group">
+      <label>Date</label>
+      <input type="date" id="offDate" />
+    </div>
+    <div class="form-group">
+      <label>Type</label>
+      <select id="offType">
+        <option value="Vacation">Vacation</option>
+        <option value="Sick">Sick leave</option>
+        <option value="Personal">Personal</option>
+        <option value="Holiday">Public holiday</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="cancelOffModal">Cancel</button>
+      <button class="btn" id="saveOffDayBtn">Add off day</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    // ---------- STATE ----------
+    let employees = [
+      { id: 'e1', name: 'Maya Chen', role: 'Senior Developer', department: 'Engineering', status: 'Active' },
+      { id: 'e2', name: 'James Okonkwo', role: 'Product Manager', department: 'Engineering', status: 'Remote' },
+      { id: 'e3', name: 'Sofia Martinez', role: 'UX Lead', department: 'Design', status: 'Active' },
+      { id: 'e4', name: 'Liam O\'Connor', role: 'Marketing Specialist', department: 'Marketing', status: 'On leave' },
+      { id: 'e5', name: 'Aisha Khan', role: 'HR Generalist', department: 'HR', status: 'Active' }
+    ];
+
+    // Off days: each has employeeId, date (YYYY-MM-DD), type
+    let offDays = [
+      { id: 'o1', employeeId: 'e1', date: '2025-04-10', type: 'Vacation' },
+      { id: 'o2', employeeId: 'e3', date: '2025-04-12', type: 'Personal' },
+      { id: 'o3', employeeId: 'e4', date: '2025-04-15', type: 'Sick' },
+      { id: 'o4', employeeId: 'e2', date: '2025-04-18', type: 'Vacation' },
+      { id: 'o5', employeeId: 'e5', date: '2025-04-22', type: 'Holiday' }
+    ];
+
+    // Helper: generate ID
+    function uid(prefix = 'id') {
+      return prefix + Math.random().toString(36).substring(2, 9);
+    }
+
+    // ---------- DOM elements ----------
+    const employeeTableBody = document.getElementById('employeeTableBody');
+    const offDayList = document.getElementById('offDayList');
+    const totalEmployeesSpan = document.getElementById('totalEmployees');
+    const offTodayCountSpan = document.getElementById('offTodayCount');
+    const employeeModal = document.getElementById('employeeModal');
+    const offDayModal = document.getElementById('offDayModal');
+
+    // Employee modal inputs
+    const empNameInput = document.getElementById('empName');
+    const empRoleInput = document.getElementById('empRole');
+    const empDeptSelect = document.getElementById('empDept');
+    const empStatusSelect = document.getElementById('empStatus');
+
+    // Off day modal inputs
+    const offEmployeeSelect = document.getElementById('offEmployeeSelect');
+    const offDateInput = document.getElementById('offDate');
+    const offTypeSelect = document.getElementById('offType');
+
+    // ---------- RENDERING ----------
+    function renderAll() {
+      renderEmployeeTable();
+      renderOffDayList();
+      renderStats();
+      populateEmployeeSelect();
+    }
+
+    function renderEmployeeTable() {
+      if (!employeeTableBody) return;
+      if (employees.length === 0) {
+        employeeTableBody.innerHTML = `<tr><td colspan="5" class="empty-state" style="text-align:center; padding:40px;">No employees yet. Click "New employee" to add.</td></tr>`;
+        return;
+      }
+
+      let html = '';
+      employees.forEach(emp => {
+        const initials = emp.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+        let statusBadge = '';
+        if (emp.status === 'Active') statusBadge = '<span class="badge badge-green">Active</span>';
+        else if (emp.status === 'Remote') statusBadge = '<span class="badge badge-blue">Remote</span>';
+        else if (emp.status === 'On leave') statusBadge = '<span class="badge badge-amber">On leave</span>';
+        else statusBadge = `<span class="badge">${emp.status}</span>`;
+
+        html += `
+          <tr>
+            <td>
+              <div class="employee-cell">
+                <div class="avatar">${initials}</div>
+                <div><strong>${emp.name}</strong></div>
+              </div>
+            </td>
+            <td>${emp.role}</td>
+            <td>${emp.department}</td>
+            <td>${statusBadge}</td>
+            <td>
+              <div class="action-group">
+                <button class="btn-icon btn-danger" data-employee-id="${emp.id}" data-action="delete-employee" title="Remove employee"><i class="fas fa-trash-alt"></i></button>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+      employeeTableBody.innerHTML = html;
+
+      // Attach delete employee events
+      document.querySelectorAll('[data-action="delete-employee"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const id = btn.getAttribute('data-employee-id');
+          deleteEmployee(id);
+        });
+      });
+    }
+
+    function renderOffDayList() {
+      if (!offDayList) return;
+
+      // sort by date ascending
+      const sorted = [...offDays].sort((a, b) => new Date(a.date) - new Date(b.date));
+      if (sorted.length === 0) {
+        offDayList.innerHTML = `<div class="empty-state"><i class="fas fa-calendar-check"></i><br>No off days scheduled</div>`;
+        return;
+      }
+
+      let html = '';
+      sorted.forEach(off => {
+        const emp = employees.find(e => e.id === off.employeeId);
+        if (!emp) return; // skip if employee deleted
+
+        const dateObj = new Date(off.date + 'T00:00:00');
+        const day = dateObj.getDate().toString().padStart(2, '0');
+        const month = dateObj.toLocaleString('en', { month: 'short' }).toUpperCase();
+        const typeClass = off.type.toLowerCase().includes('vacation') ? 'dot-vacation' :
+                          off.type.toLowerCase().includes('sick') ? 'dot-sick' :
+                          off.type.toLowerCase().includes('personal') ? 'dot-personal' : 'dot-holiday';
+
+        html += `
+          <div class="offday-item">
+            <div class="offday-info">
+              <div class="offday-date">
+                <div class="day">${day}</div>
+                <div class="month">${month}</div>
+              </div>
+              <div class="offday-details">
+                <div class="name">${emp.name}</div>
+                <div class="type"><span class="type-dot ${typeClass}"></span> ${off.type}</div>
+              </div>
+            </div>
+            <button class="btn-icon btn-danger" data-offday-id="${off.id}" data-action="delete-offday" title="Remove off day"><i class="fas fa-times"></i></button>
+          </div>
+        `;
+      });
+
+      if (!html) {
+        offDayList.innerHTML = `<div class="empty-state"><i class="fas fa-calendar-check"></i><br>No off days scheduled</div>`;
+        return;
+      }
+      offDayList.innerHTML = html;
+
+      // Attach delete offday events
+      document.querySelectorAll('[data-action="delete-offday"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const offId = btn.getAttribute('data-offday-id');
+          deleteOffDay(offId);
+        });
+      });
+    }
+
+    function renderStats() {
+      totalEmployeesSpan.textContent = employees.length;
+
+      // off today (check if any offDay matches today's date)
+      const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      const offToday = offDays.filter(off => off.date === todayStr).length;
+      offTodayCountSpan.textContent = offToday;
+    }
+
+    function populateEmployeeSelect() {
+      if (!offEmployeeSelect) return;
+      let options = '';
+      employees.forEach(emp => {
+        options += `<option value="${emp.id}">${emp.name} (${emp.department})</option>`;
+      });
+      offEmployeeSelect.innerHTML = options;
+    }
+
+    // ---------- CRUD Employee ----------
+    function addEmployee(name, role, department, status) {
+      if (!name.trim() || !role.trim()) return alert('Please fill name and role');
+      const newEmp = {
+        id: uid('e'),
+        name: name.trim(),
+        role: role.trim(),
+        department,
+        status
+      };
+      employees.push(newEmp);
+      renderAll();
+    }
+
+    function deleteEmployee(id) {
+      if (!confirm('Delete this employee? Their off days will also be removed.')) return;
+      employees = employees.filter(emp => emp.id !== id);
+      offDays = offDays.filter(off => off.employeeId !== id);
+      renderAll();
+    }
+
+    // ---------- CRUD OffDay ----------
+    function addOffDay(employeeId, date, type) {
+      if (!employeeId || !date) return alert('Please select employee and date');
+      // check if date valid
+      const newOff = {
+        id: uid('o'),
+        employeeId,
+        date,
+        type
+      };
+      offDays.push(newOff);
+      renderAll();
+    }
+
+    function deleteOffDay(offId) {
+      offDays = offDays.filter(off => off.id !== offId);
+      renderAll();
+    }
+
+    // ---------- MODAL HANDLING ----------
+    function openModal(modal) {
+      modal.classList.add('active');
+    }
+
+    function closeModal(modal) {
+      modal.classList.remove('active');
+    }
+
+    // Employee modal
+    document.getElementById('addEmployeeBtn').addEventListener('click', () => {
+      // reset form
+      empNameInput.value = '';
+      empRoleInput.value = '';
+      empDeptSelect.value = 'Engineering';
+      empStatusSelect.value = 'Active';
+      openModal(employeeModal);
+    });
+
+    document.getElementById('cancelEmpModal').addEventListener('click', () => closeModal(employeeModal));
+    document.getElementById('saveEmployeeBtn').addEventListener('click', () => {
+      const name = empNameInput.value.trim();
+      const role = empRoleInput.value.trim();
+      const dept = empDeptSelect.value;
+      const status = empStatusSelect.value;
+      if (!name || !role) return alert('Please enter name and role');
+      addEmployee(name, role, dept, status);
+      closeModal(employeeModal);
+    });
+
+    // Off day modal
+    document.getElementById('addOffDayBtn').addEventListener('click', () => {
+      if (employees.length === 0) {
+        alert('Add an employee first.');
+        return;
+      }
+      // set default date to today + 1 day
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      offDateInput.value = tomorrow.toISOString().slice(0, 10);
+      offTypeSelect.value = 'Vacation';
+      populateEmployeeSelect(); // refresh
+      openModal(offDayModal);
+    });
+
+    document.getElementById('cancelOffModal').addEventListener('click', () => closeModal(offDayModal));
+    document.getElementById('saveOffDayBtn').addEventListener('click', () => {
+      const empId = offEmployeeSelect.value;
+      const date = offDateInput.value;
+      const type = offTypeSelect.value;
+      if (!empId || !date) return alert('Please fill all fields');
+      addOffDay(empId, date, type);
+      closeModal(offDayModal);
+    });
+
+    // Close modal on overlay click
+    window.addEventListener('click', (e) => {
+      if (e.target === employeeModal) closeModal(employeeModal);
+      if (e.target === offDayModal) closeModal(offDayModal);
+    });
+
+    // ---------- INIT ----------
+    renderAll();
+  })();
+</script>
+</body>
+</html>
