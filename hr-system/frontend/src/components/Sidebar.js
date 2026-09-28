@@ -4,13 +4,15 @@ import { useAuth } from '../context/AuthContext';
 
 const Sidebar = () => {
   const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const links = [
     { to: '/', label: 'Dashboard', icon: '📊' },
     { to: '/employees', label: 'Employees', icon: '👥' },
     { to: '/departments', label: 'Departments', icon: '🏢' },
     { to: '/leaves', label: 'Leave Requests', icon: '🌴' },
     { to: '/attendance', label: 'Attendance', icon: '🕐' },
-    { to: '/payroll', label: 'Payroll', icon: '💰' }
+    { to: '/payroll', label: 'Payroll', icon: '💰' },
+    ...(isAdmin ? [{ to: '/users', label: 'Users & Roles', icon: '🔑' }] : [])
   ];
 
   return (

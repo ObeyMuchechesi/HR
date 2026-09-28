@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: hr-system/backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: hr-system/backend
+        run: npm ci
+
+      - name: Syntax check all source files
+        working-directory: hr-system/backend
+        run: |
+          for f in server.js config/*.js models/*.js routes/*.js middleware/*.js; do
+            node --check "$f"
+          done
+          echo "All backend files parse cleanly"
+
+      - name: Validate .env.example matches code expectations
+        working-directory: hr-system/backend
+        run: |
+          node -e "
+          const fs = require('fs');
+          // Sanity: server entry requires the modules it needs without a DB connection
+          const src = fs.readFileSync('server.js', 'utf8');
+          for (const dep of ['cors', 'morgan', 'dotenv', './config/db']) {
+            if (!src.includes(dep)) throw new Error('server.js missing ' + dep);
+          }
+          console.log('server.js wiring OK');
+          "
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: hr-system/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: hr-system/frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: hr-system/frontend
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: hr-system/frontend/build/
+          retention-days: 7

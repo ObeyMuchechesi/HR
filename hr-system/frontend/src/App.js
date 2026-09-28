@@ -9,6 +9,7 @@ import Departments from './pages/Departments';
 import Leaves from './pages/Leaves';
 import Attendance from './pages/Attendance';
 import Payroll from './pages/Payroll';
+import Users from './pages/Users';
 
 const PrivateRoute = ({ children }) => {
   const { user } = useAuth();
@@ -30,6 +31,7 @@ function App() {
         <Route path="leaves" element={<Leaves />} />
         <Route path="attendance" element={<Attendance />} />
         <Route path="payroll" element={<Payroll />} />
+        <Route path="users" element={<Users />} />
       </Route>
     </Routes>
   );

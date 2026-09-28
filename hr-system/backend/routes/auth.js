@@ -56,6 +56,19 @@ router.get('/me', protect, async (req, res) => {
   res.json(req.user);
 });
 
+// GET /api/auth/users  (admin only): list all user accounts
+router.get('/users', protect, authorize('admin'), async (req, res) => {
+  try {
+    const users = await User.find()
+      .select('-password')
+      .populate('employee', 'firstName lastName employeeId')
+      .sort({ createdAt: -1 });
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // PUT /api/auth/role  (admin only): change a user's role
 router.put('/role', protect, authorize('admin'), async (req, res) => {
   try {
