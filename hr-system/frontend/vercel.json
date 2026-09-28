@@ -1,5 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "react-scripts build",
+  "outputDirectory": "build",
+  "functions": {
+    "api/proxy.js": { "maxDuration": 30 }
+  },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/proxy" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
