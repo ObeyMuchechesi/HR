@@ -5,7 +5,6 @@ const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 
 dotenv.config({ override: true });
-connectDB();
 
 const app = express();
 
@@ -29,5 +28,12 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Server error', error: err.message });
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+// Start the HTTP server only when run directly (node server.js / nodemon).
+// When imported by a serverless wrapper (api/index.js), the platform manages the listener.
+if (require.main === module) {
+  connectDB();
+  const PORT = process.env.PORT || 5001;
+  app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+}
+
+module.exports = app;

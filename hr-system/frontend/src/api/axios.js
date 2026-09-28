@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+// In production the backend lives on its own origin (e.g. Vercel),
+// so the full URL is injected at build time via REACT_APP_API_URL.
 const api = axios.create({
-  baseURL: '/api'
+  baseURL: process.env.REACT_APP_API_URL || '/api'
 });
 
 api.interceptors.request.use((config) => {
