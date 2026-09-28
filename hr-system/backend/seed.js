@@ -26,7 +26,7 @@ const PASSWORD = 'Password123';
 // under the September column); Lisa's Sept count says 5 but only 2 dates are listed.
 const STAFF = [
   {
-    firstName: 'Ashley', lastName: 'Maspeak', email: 'ashley@hr.local',
+    firstName: 'Ashley', lastName: 'Maspeak', email: 'ashley@callcentral.com',
     position: 'Call Center Agent', employeeId: 'CC-001',
     leaveBlocks: [
       { start: '2026-07-13', end: '2026-07-13' },                       // July: 1 day (serial 46216)
@@ -36,7 +36,7 @@ const STAFF = [
     ],
   },
   {
-    firstName: 'Fadzai', lastName: 'Mate', email: 'fadzai@hr.local',
+    firstName: 'Fadzai', lastName: 'Mate', email: 'fadzai@callcentral.com',
     position: 'Call Center Agent', employeeId: 'CC-002',
     leaveBlocks: [
       { start: '2026-08-12', end: '2026-08-14' },                       // 12/08-14/08/2026
@@ -44,7 +44,7 @@ const STAFF = [
     ],
   },
   {
-    firstName: 'Lisa', lastName: 'Tandire', email: 'lisa@hr.local',
+    firstName: 'Lisa', lastName: 'Tandire', email: 'lisa@callcentral.com',
     position: 'Call Center Agent', employeeId: 'CC-003',
     leaveBlocks: [
       { start: '2026-07-10', end: '2026-07-10' },                       // 10/07
@@ -55,7 +55,7 @@ const STAFF = [
     ],
   },
   {
-    firstName: 'Liliosa', lastName: 'Zinyemba', email: 'liliosa@hr.local',
+    firstName: 'Liliosa', lastName: 'Zinyemba', email: 'liliosa@callcentral.com',
     position: 'Call Center Agent', employeeId: 'CC-004',
     leaveBlocks: [
       { start: '2026-07-31', end: '2026-07-31' },                       // serial 46234
@@ -180,6 +180,56 @@ const run = async () => {
     }
   }
   console.log(`💰 Payroll records created: ${payrollCount} (Jan-Sep 2026 × 5 staff, $300 each, all Paid)`);
+
+  // ---------- Attendance: Mon-Fri 07:50-16:00, 1 May 2026 -> today ----------
+  // Every employee except Obey; approved leave days are skipped (no check-in on leave).
+  const CHECK_IN_H = 7, CHECK_IN_M = 50;
+  const CHECK_OUT_H = 16, CHECK_OUT_M = 0;
+  const hoursWorked = 8.17; // 07:50 -> 16:00
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dayKey = (d) => d.toISOString().slice(0, 10);
+
+  let attendanceCount = 0;
+  for (const { person, employee } of created) {
+    if (person.isAdmin) continue; // everyone except Obey
+
+    // Expand this person's approved leave blocks into a skip-set
+    const onLeave = new Set();
+    for (const block of person.leaveBlocks) {
+      const cursor = new Date(block.start + 'T00:00:00');
+      const end = new Date(block.end + 'T00:00:00');
+      while (cursor <= end) {
+        onLeave.add(dayKey(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+
+    const cursor = new Date('2026-05-01T00:00:00');
+    while (cursor <= today) {
+      const dow = cursor.getDay();
+      const isWeekday = dow >= 1 && dow <= 5;
+      if (isWeekday && !onLeave.has(dayKey(cursor))) {
+        const checkIn = new Date(cursor);
+        checkIn.setHours(CHECK_IN_H, CHECK_IN_M, 0, 0);
+        const checkOut = new Date(cursor);
+        checkOut.setHours(CHECK_OUT_H, CHECK_OUT_M, 0, 0);
+        await Attendance.create({
+          employee: employee._id,
+          date: new Date(cursor),
+          checkIn,
+          checkOut,
+          status: 'Present',
+          hoursWorked,
+          notes: '',
+        });
+        attendanceCount++;
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  }
+  console.log(`🕐 Attendance records created: ${attendanceCount} (Mon-Fri, 07:50-16:00, 1 May -> today, leave days skipped)`);
 
   await mongoose.disconnect();
   console.log('\n🎉 Seed complete. Logins (password for ALL: ' + PASSWORD + '):');
