@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 const Sidebar = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const isReports = ['admin', 'hr', 'manager'].includes(user?.role);
   const links = [
     { to: '/', label: 'Dashboard', icon: '📊' },
     { to: '/employees', label: 'Employees', icon: '👥' },
@@ -12,6 +13,7 @@ const Sidebar = () => {
     { to: '/leaves', label: 'Leave Requests', icon: '🌴' },
     { to: '/attendance', label: 'Attendance', icon: '🕐' },
     { to: '/payroll', label: 'Payroll', icon: '💰' },
+    ...(isReports ? [{ to: '/reports', label: 'Reports', icon: '📈' }] : []),
     ...(isAdmin ? [{ to: '/users', label: 'Users & Roles', icon: '🔑' }] : [])
   ];
 

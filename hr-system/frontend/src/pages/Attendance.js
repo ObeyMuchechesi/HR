@@ -7,9 +7,10 @@ const todayStr = () => {
   const d = new Date();
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
-const toLocalInput = (iso) => {
+// ISO instant -> "HH:MM" in the viewer's local time (for time inputs)
+const toLocalTime = (iso) => {
   const d = new Date(iso);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
 const STATUS_OPTIONS = ['Present', 'Late', 'Remote', 'Half-day', 'Absent'];
@@ -23,8 +24,8 @@ const Attendance = () => {
   const [showManual, setShowManual] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ employee: '', status: 'Present', notes: '' });
-  const [manual, setManual] = useState({ employee: '', date: todayStr(), checkInAt: '', checkOutAt: '', status: 'Present', notes: '' });
-  const [editForm, setEditForm] = useState({ date: '', checkInAt: '', checkOutAt: '', status: '' });
+  const [manual, setManual] = useState({ employee: '', date: todayStr(), checkInTime: '08:00', checkOutTime: '16:00', status: 'Present', notes: '' });
+  const [editForm, setEditForm] = useState({ date: '', checkInTime: '', checkOutTime: '', status: '' });
   const [dateFilter, setDateFilter] = useState('');
   const [msg, setMsg] = useState(null);
 
@@ -89,13 +90,14 @@ const Attendance = () => {
       await api.post('/attendance/manual', {
         employee: manual.employee,
         date: manual.date,
-        checkInAt: manual.checkInAt || undefined,
-        checkOutAt: manual.checkOutAt || undefined,
+        checkInTime: manual.checkInTime,
+        checkOutTime: manual.checkOutTime || undefined,
         status: manual.status,
-        notes: manual.notes || undefined
+        notes: manual.notes || undefined,
+        tzOffset: new Date().getTimezoneOffset()
       });
       setShowManual(false);
-      setManual({ employee: '', date: todayStr(), checkInAt: '', checkOutAt: '', status: 'Present', notes: '' });
+      setManual({ employee: '', date: todayStr(), checkInTime: '08:00', checkOutTime: '16:00', status: 'Present', notes: '' });
       flash('Record added');
       load();
     } catch (err) {
@@ -107,8 +109,8 @@ const Attendance = () => {
     setEditId(r._id);
     setEditForm({
       date: r.date ? r.date.slice(0, 10) : '',
-      checkInAt: r.checkIn ? toLocalInput(r.checkIn) : '',
-      checkOutAt: r.checkOut ? toLocalInput(r.checkOut) : '',
+      checkInTime: r.checkIn ? toLocalTime(r.checkIn) : '',
+      checkOutTime: r.checkOut ? toLocalTime(r.checkOut) : '',
       status: r.status
     });
   };
@@ -116,10 +118,10 @@ const Attendance = () => {
   const handleEdit = async (e) => {
     e.preventDefault();
     try {
-      const payload = {};
+      const payload = { tzOffset: new Date().getTimezoneOffset() };
       if (editForm.date) payload.date = editForm.date;
-      if (editForm.checkInAt) payload.checkInAt = new Date(editForm.checkInAt).toISOString();
-      if (editForm.checkOutAt) payload.checkOutAt = new Date(editForm.checkOutAt).toISOString();
+      if (editForm.checkInTime) payload.checkInTime = editForm.checkInTime;
+      if (editForm.checkOutTime) payload.checkOutTime = editForm.checkOutTime;
       if (editForm.status) payload.status = editForm.status;
       await api.put(`/attendance/${editId}`, payload);
       setEditId(null);
@@ -230,12 +232,12 @@ const Attendance = () => {
               <input type="date" value={manual.date} onChange={e => setManual({ ...manual, date: e.target.value })} required />
             </div>
             <div className="form-group">
-              <label>Check-in time (local)</label>
-              <input type="datetime-local" value={manual.checkInAt} onChange={e => setManual({ ...manual, checkInAt: e.target.value })} />
+              <label>Check-in time</label>
+              <input type="time" value={manual.checkInTime} onChange={e => setManual({ ...manual, checkInTime: e.target.value })} required />
             </div>
             <div className="form-group">
-              <label>Check-out time (local, optional)</label>
-              <input type="datetime-local" value={manual.checkOutAt} onChange={e => setManual({ ...manual, checkOutAt: e.target.value })} />
+              <label>Check-out time (optional)</label>
+              <input type="time" value={manual.checkOutTime} onChange={e => setManual({ ...manual, checkOutTime: e.target.value })} />
             </div>
             <div className="form-group">
               <label>Status</label>
@@ -260,12 +262,12 @@ const Attendance = () => {
               <input type="date" value={editForm.date} onChange={e => setEditForm({ ...editForm, date: e.target.value })} required />
             </div>
             <div className="form-group">
-              <label>Check-in time (local)</label>
-              <input type="datetime-local" value={editForm.checkInAt} onChange={e => setEditForm({ ...editForm, checkInAt: e.target.value })} />
+              <label>Check-in time</label>
+              <input type="time" value={editForm.checkInTime} onChange={e => setEditForm({ ...editForm, checkInTime: e.target.value })} />
             </div>
             <div className="form-group">
-              <label>Check-out time (local)</label>
-              <input type="datetime-local" value={editForm.checkOutAt} onChange={e => setEditForm({ ...editForm, checkOutAt: e.target.value })} />
+              <label>Check-out time</label>
+              <input type="time" value={editForm.checkOutTime} onChange={e => setEditForm({ ...editForm, checkOutTime: e.target.value })} />
             </div>
             <div className="form-group">
               <label>Status</label>

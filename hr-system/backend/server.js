@@ -19,6 +19,7 @@ app.use('/api/departments', require('./routes/departments'));
 app.use('/api/leaves', require('./routes/leaves'));
 app.use('/api/attendance', require('./routes/attendance'));
 app.use('/api/payroll', require('./routes/payroll'));
+app.use('/api/cron', require('./routes/cron'));
 
 app.get('/', (req, res) => res.json({ message: 'HR System API is running 🚀' }));
 
