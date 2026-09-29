@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 
-const POLL_MS = 30000;
+// Slow safety-net poll in case SSE is unavailable (e.g. proxy hiccup)
+const FALLBACK_POLL_MS = 120000;
 
 const timeAgo = (iso) => {
   const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
@@ -32,8 +33,33 @@ const NotificationBell = () => {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, POLL_MS);
-    return () => clearInterval(t);
+
+    // Real-time: Server-Sent Events. The server pushes within seconds of
+    // a new notification; EventSource reconnects by itself when the
+    // 45s stream lifetime ends. Falls back to slow polling on failure.
+    const token = JSON.parse(localStorage.getItem('hr_user') || 'null')?.token;
+    let es;
+    let fallback = null;
+    if (token && window.EventSource) {
+      es = new EventSource(`/api/notifications/stream?token=${encodeURIComponent(token)}`);
+      es.addEventListener('notifications', (e) => {
+        try {
+          const { unread: u } = JSON.parse(e.data);
+          if (typeof u === 'number') setUnread(u);
+        } catch { /* ignore malformed frame */ }
+        load();
+      });
+      es.onerror = () => {
+        if (!fallback) fallback = setInterval(load, FALLBACK_POLL_MS);
+      };
+    } else {
+      fallback = setInterval(load, FALLBACK_POLL_MS);
+    }
+
+    return () => {
+      if (es) es.close();
+      if (fallback) clearInterval(fallback);
+    };
   }, [load]);
 
   useEffect(() => {

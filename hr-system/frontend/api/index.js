@@ -41,6 +41,22 @@ const SKIP_RESPONSE_HEADERS = new Set([
   'content-length',
 ]);
 
+const STREAM_PASSTHROUGH = async (upstream, res) => {
+  res.statusCode = upstream.status;
+  upstream.headers.forEach((value, key) => {
+    if (!SKIP_RESPONSE_HEADERS.has(key.toLowerCase())) {
+      res.setHeader(key, value);
+    }
+  });
+  const reader = upstream.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    res.write(value);
+  }
+  res.end();
+};
+
 module.exports = async (req, res) => {
   try {
     // Buffer the request body (login POSTs, PUTs, etc. are all small JSON).
@@ -62,6 +78,13 @@ module.exports = async (req, res) => {
       body: hasBody ? body : undefined,
       redirect: 'manual',
     });
+
+    const contentType = upstream.headers.get('content-type') || '';
+    if (contentType.includes('text/event-stream')) {
+      // Stream SSE through untouched so EventSource sees chunks immediately.
+      await STREAM_PASSTHROUGH(upstream, res);
+      return;
+    }
 
     res.statusCode = upstream.status;
     upstream.headers.forEach((value, key) => {
