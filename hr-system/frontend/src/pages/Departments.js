@@ -55,6 +55,7 @@ const Departments = () => {
         {departments.length === 0 ? (
           <div className="empty">No departments yet</div>
         ) : (
+          <div className="table-wrap">
           <table>
             <thead>
               <tr>
@@ -65,13 +66,13 @@ const Departments = () => {
             <tbody>
               {departments.map(d => (
                 <tr key={d._id}>
-                  <td><span className="badge badge-blue">{d.code}</span></td>
-                  <td><strong>{d.name}</strong></td>
-                  <td>{d.manager ? `${d.manager.firstName} ${d.manager.lastName}` : '—'}</td>
-                  <td>{d.location || '—'}</td>
-                  <td>${(d.budget || 0).toLocaleString()}</td>
-                  <td>{d.employeeCount || 0}</td>
-                  <td>
+                  <td data-label="Code"><span className="badge badge-blue">{d.code}</span></td>
+                  <td data-label="Name"><strong>{d.name}</strong></td>
+                  <td data-label="Manager">{d.manager ? `${d.manager.firstName} ${d.manager.lastName}` : '—'}</td>
+                  <td data-label="Location">{d.location || '—'}</td>
+                  <td data-label="Budget">${(d.budget || 0).toLocaleString()}</td>
+                  <td data-label="Employees">{d.employeeCount || 0}</td>
+                  <td data-label="Actions">
                     <div className="actions">
                       {canEdit && <button className="btn btn-secondary btn-sm" onClick={() => {
                         setEditing(d);
@@ -90,6 +91,7 @@ const Departments = () => {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

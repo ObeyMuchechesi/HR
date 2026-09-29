@@ -82,6 +82,7 @@ const Employees = () => {
         {employees.length === 0 ? (
           <div className="empty">No employees found</div>
         ) : (
+          <div className="table-wrap">
           <table>
             <thead>
               <tr>
@@ -97,18 +98,18 @@ const Employees = () => {
             <tbody>
               {employees.map(e => (
                 <tr key={e._id}>
-                  <td>{e.employeeId}</td>
-                  <td><strong>{e.firstName} {e.lastName}</strong></td>
-                  <td>{e.email}</td>
-                  <td>{e.department?.name || '—'}</td>
-                  <td>{e.position}</td>
-                  <td>
+                  <td data-label="ID">{e.employeeId}</td>
+                  <td data-label="Name"><strong>{e.firstName} {e.lastName}</strong></td>
+                  <td data-label="Email">{e.email}</td>
+                  <td data-label="Department">{e.department?.name || '—'}</td>
+                  <td data-label="Position">{e.position}</td>
+                  <td data-label="Status">
                     <span className={`badge ${
                       e.status === 'Active' ? 'badge-green' :
                       e.status === 'On Leave' ? 'badge-amber' : 'badge-red'
                     }`}>{e.status}</span>
                   </td>
-                  <td>
+                  <td data-label="Actions">
                     <div className="actions">
                       {canEdit && <button className="btn btn-secondary btn-sm" onClick={() => openEdit(e)}>Edit</button>}
                       {canEdit && <button className="btn btn-danger btn-sm" onClick={() => handleDelete(e._id)}>Delete</button>}
@@ -118,6 +119,7 @@ const Employees = () => {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

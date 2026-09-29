@@ -19,7 +19,7 @@ router.get('/', protect, async (req, res) => {
     const leaves = await Leave.find(filter)
       .populate('employee', 'firstName lastName employeeId')
       .populate('approvedBy', 'name')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1, startDate: -1 });
     res.json(leaves);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -36,11 +36,16 @@ router.post('/', protect, async (req, res) => {
       employee = req.user.employee;
     }
     if (!employee) return res.status(400).json({ message: 'Employee is required' });
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+    // Inclusive calendar-day count in UTC, e.g. Oct 5 -> Oct 6 = 2 days.
+    // Both dates must be plain YYYY-MM-DD so no timezone shifts the count.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate || '') || !/^\d{4}-\d{2}-\d{2}$/.test(endDate || '')) {
+      return res.status(400).json({ message: 'Dates must be valid calendar dates' });
+    }
+    const start = new Date(`${startDate}T00:00:00.000Z`);
+    const end = new Date(`${endDate}T00:00:00.000Z`);
+    const days = Math.round((end - start) / 86400000) + 1;
 
-    if (days <= 0) return res.status(400).json({ message: 'Invalid date range' });
+    if (days <= 0) return res.status(400).json({ message: 'End date must be on or after start date' });
 
     const leave = await Leave.create({
       employee, leaveType, startDate: start, endDate: end, days, reason

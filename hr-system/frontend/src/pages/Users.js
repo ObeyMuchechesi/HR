@@ -56,6 +56,7 @@ const Users = () => {
         {filtered.length === 0 ? (
           <div className="empty">No user accounts found</div>
         ) : (
+          <div className="table-wrap">
           <table>
             <thead>
               <tr>
@@ -70,16 +71,16 @@ const Users = () => {
             <tbody>
               {filtered.map(u => (
                 <tr key={u._id}>
-                  <td><strong>{u.name}{currentUser?._id === u._id ? ' (you)' : ''}</strong></td>
-                  <td>{u.email}</td>
-                  <td><span className={`badge ${roleBadge(u.role)}`} style={{ textTransform: 'capitalize' }}>{u.role}</span></td>
-                  <td>
+                  <td data-label="Name"><strong>{u.name}{currentUser?._id === u._id ? ' (you)' : ''}</strong></td>
+                  <td data-label="Email">{u.email}</td>
+                  <td data-label="Role"><span className={`badge ${roleBadge(u.role)}`} style={{ textTransform: 'capitalize' }}>{u.role}</span></td>
+                  <td data-label="Linked Employee">
                     {u.employee
                       ? `${u.employee.firstName} ${u.employee.lastName} (${u.employee.employeeId})`
                       : <span style={{ color: '#94a3b8' }}>—</span>}
                   </td>
-                  <td>{new Date(u.createdAt).toLocaleDateString()}</td>
-                  <td>
+                  <td data-label="Joined">{new Date(u.createdAt).toLocaleDateString()}</td>
+                  <td data-label="Change Role">
                     <select
                       value={u.role}
                       disabled={currentUser?._id === u._id}
@@ -94,6 +95,7 @@ const Users = () => {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

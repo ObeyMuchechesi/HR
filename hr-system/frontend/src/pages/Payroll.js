@@ -60,6 +60,7 @@ const Payroll = () => {
         {records.length === 0 ? (
           <div className="empty">No payroll records</div>
         ) : (
+          <div className="table-wrap">
           <table>
             <thead>
               <tr>
@@ -73,14 +74,14 @@ const Payroll = () => {
                 const ded = Object.values(r.deductions || {}).reduce((a, b) => a + b, 0);
                 return (
                   <tr key={r._id}>
-                    <td><strong>{r.employee?.firstName} {r.employee?.lastName}</strong></td>
-                    <td>{monthName(r.month)} {r.year}</td>
-                    <td>${r.basicSalary.toLocaleString()}</td>
-                    <td style={{ color: '#10b981' }}>+${allow.toLocaleString()}</td>
-                    <td style={{ color: '#ef4444' }}>-${ded.toLocaleString()}</td>
-                    <td><strong>${r.netPay.toLocaleString()}</strong></td>
-                    <td><span className={`badge ${r.status === 'Paid' ? 'badge-green' : 'badge-amber'}`}>{r.status}</span></td>
-                    <td>
+                    <td data-label="Employee"><strong>{r.employee?.firstName} {r.employee?.lastName}</strong></td>
+                    <td data-label="Month">{monthName(r.month)} {r.year}</td>
+                    <td data-label="Basic">${r.basicSalary.toLocaleString()}</td>
+                    <td data-label="Allowances" style={{ color: '#10b981' }}>+${allow.toLocaleString()}</td>
+                    <td data-label="Deductions" style={{ color: '#ef4444' }}>-${ded.toLocaleString()}</td>
+                    <td data-label="Net Pay"><strong>${r.netPay.toLocaleString()}</strong></td>
+                    <td data-label="Status"><span className={`badge ${r.status === 'Paid' ? 'badge-green' : 'badge-amber'}`}>{r.status}</span></td>
+                    <td data-label="Actions">
                       {canEdit && r.status === 'Pending' && (
                         <button className="btn btn-success btn-sm" onClick={() => markPaid(r._id)}>Mark Paid</button>
                       )}
@@ -90,6 +91,7 @@ const Payroll = () => {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

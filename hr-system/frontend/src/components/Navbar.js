@@ -2,11 +2,14 @@ import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import NotificationBell from './NotificationBell';
 
-const Navbar = () => {
+const Navbar = ({ onMenu }) => {
   const { user, logout } = useAuth();
   return (
     <header className="navbar">
-      <h1>Welcome back, {user?.name}</h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+        <button className="menu-btn" onClick={onMenu} aria-label="Open menu">☰</button>
+        <h1>Welcome back, {user?.name}</h1>
+      </div>
       <div className="user-info">
         <NotificationBell />
         <span className="badge badge-blue">{user?.role}</span>

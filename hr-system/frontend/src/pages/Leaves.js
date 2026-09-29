@@ -67,7 +67,8 @@ const Leaves = () => {
         {leaves.length === 0 ? (
           <div className="empty">No leave requests</div>
         ) : (
-          <table>
+          <div className="table-wrap">
+            <table>
             <thead>
               <tr>
                 <th>Employee</th><th>Type</th><th>From</th><th>To</th>
@@ -77,14 +78,14 @@ const Leaves = () => {
             <tbody>
               {leaves.map(l => (
                 <tr key={l._id}>
-                  <td><strong>{l.employee?.firstName} {l.employee?.lastName}</strong></td>
-                  <td><span className="badge badge-blue">{l.leaveType}</span></td>
-                  <td>{new Date(l.startDate).toLocaleDateString()}</td>
-                  <td>{new Date(l.endDate).toLocaleDateString()}</td>
-                  <td>{l.days}</td>
-                  <td style={{ maxWidth: 200 }}>{l.reason}</td>
-                  <td><span className={`badge ${badgeClass(l.status)}`}>{l.status}</span></td>
-                  <td>
+                  <td data-label="Employee"><strong>{l.employee?.firstName} {l.employee?.lastName}</strong></td>
+                  <td data-label="Type"><span className="badge badge-blue">{l.leaveType}</span></td>
+                  <td data-label="From">{new Date(l.startDate).toLocaleDateString()}</td>
+                  <td data-label="To">{new Date(l.endDate).toLocaleDateString()}</td>
+                  <td data-label="Days">{l.days}</td>
+                  <td data-label="Reason" style={{ maxWidth: 200 }}>{l.reason}</td>
+                  <td data-label="Status"><span className={`badge ${badgeClass(l.status)}`}>{l.status}</span></td>
+                  <td data-label="Actions">
                     <div className="actions">
                       {canApprove && l.status === 'Pending' && (
                         <>
@@ -97,7 +98,8 @@ const Leaves = () => {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
 

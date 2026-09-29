@@ -79,7 +79,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <div className="two-col" style={{ marginTop: 0 }}>
         <div className="card">
           <h2>Employees by Department</h2>
           {stats.byDepartment.length ? (
@@ -97,7 +97,7 @@ const Dashboard = () => {
 
         <div className="card">
           <h2>Today's Attendance</h2>
-          <div className="stats-grid" style={{ gridTemplateColumns: '1fr 1fr', marginBottom: 0 }}>
+          <div className="stats-grid" style={{ gridTemplateColumns: '1fr 1fr', marginBottom: 0, gap: 12 }}>
             <div className="stat-card">
               <div className="label">Present</div>
               <div className="value" style={{ color: '#10b981' }}>{attendance.present}</div>
@@ -118,36 +118,38 @@ const Dashboard = () => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: canAudit ? '1.4fr 1fr' : '1fr', gap: 24, marginTop: 24 }}>
+      <div className={`two-col ${canAudit ? '' : 'two-col-single'}`}>
         <div className="card">
           <h2>Pending Leave Requests</h2>
           {pendingLeaves.length === 0 ? (
             <div className="empty">No pending requests 🎉</div>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Type</th>
-                  <th>From</th>
-                  <th>To</th>
-                  <th>Days</th>
-                  <th>Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pendingLeaves.slice(0, 5).map(l => (
-                  <tr key={l._id}>
-                    <td>{l.employee?.firstName} {l.employee?.lastName}</td>
-                    <td><span className="badge badge-blue">{l.leaveType}</span></td>
-                    <td>{new Date(l.startDate).toLocaleDateString()}</td>
-                    <td>{new Date(l.endDate).toLocaleDateString()}</td>
-                    <td>{l.days}</td>
-                    <td>{l.reason}</td>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Type</th>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Days</th>
+                    <th>Reason</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {pendingLeaves.slice(0, 5).map(l => (
+                    <tr key={l._id}>
+                      <td data-label="Employee">{l.employee?.firstName} {l.employee?.lastName}</td>
+                      <td data-label="Type"><span className="badge badge-blue">{l.leaveType}</span></td>
+                      <td data-label="From">{new Date(l.startDate).toLocaleDateString()}</td>
+                      <td data-label="To">{new Date(l.endDate).toLocaleDateString()}</td>
+                      <td data-label="Days">{l.days}</td>
+                      <td data-label="Reason">{l.reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 

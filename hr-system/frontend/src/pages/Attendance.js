@@ -161,7 +161,8 @@ const Attendance = () => {
         {records.length === 0 ? (
           <div className="empty">No attendance records</div>
         ) : (
-          <table>
+          <div className="table-wrap">
+            <table>
             <thead>
               <tr>
                 <th>Employee</th><th>Date</th><th>Check In</th><th>Check Out</th>
@@ -171,13 +172,13 @@ const Attendance = () => {
             <tbody>
               {records.map(r => (
                 <tr key={r._id}>
-                  <td><strong>{r.employee?.firstName} {r.employee?.lastName}</strong></td>
-                  <td>{new Date(r.date).toLocaleDateString()}</td>
-                  <td>{r.checkIn ? new Date(r.checkIn).toLocaleTimeString() : '—'}</td>
-                  <td>{r.checkOut ? new Date(r.checkOut).toLocaleTimeString() : '—'}</td>
-                  <td>{r.hoursWorked || 0}</td>
-                  <td><span className={`badge ${statusBadge(r.status)}`}>{r.status}</span></td>
-                  <td>
+                  <td data-label="Employee"><strong>{r.employee?.firstName} {r.employee?.lastName}</strong></td>
+                  <td data-label="Date">{new Date(r.date).toLocaleDateString()}</td>
+                  <td data-label="Check In">{r.checkIn ? new Date(r.checkIn).toLocaleTimeString() : '—'}</td>
+                  <td data-label="Check Out">{r.checkOut ? new Date(r.checkOut).toLocaleTimeString() : '—'}</td>
+                  <td data-label="Hours">{r.hoursWorked || 0}</td>
+                  <td data-label="Status"><span className={`badge ${statusBadge(r.status)}`}>{r.status}</span></td>
+                  <td data-label="Actions">
                     {!r.checkOut && r.checkIn && (
                       <button className="btn btn-secondary btn-sm" onClick={() => handleCheckOut(r._id)}>Check Out</button>
                     )}
@@ -188,7 +189,8 @@ const Attendance = () => {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
 

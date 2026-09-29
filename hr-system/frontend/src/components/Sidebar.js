@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const Sidebar = () => {
+const Sidebar = ({ open, onClose }) => {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const isReports = ['admin', 'hr', 'manager'].includes(user?.role);
@@ -18,7 +18,7 @@ const Sidebar = () => {
   ];
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${open ? 'open' : ''}`}>
       <div className="brand">🏢 HR System</div>
       <nav>
         {links.map((link) => (

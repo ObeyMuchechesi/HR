@@ -76,6 +76,7 @@ const Reports = () => {
         ) : !data?.report?.length ? (
           <div className="empty">No data for this month</div>
         ) : (
+          <div className="table-wrap">
           <table>
             <thead>
               <tr>
@@ -86,18 +87,19 @@ const Reports = () => {
             <tbody>
               {data.report.map(r => (
                 <tr key={r.employeeId}>
-                  <td>{r.employeeId}</td>
-                  <td><strong>{r.name}</strong></td>
-                  <td style={{ color: '#10b981' }}>{r.present}</td>
-                  <td style={{ color: '#f59e0b' }}>{r.late}</td>
-                  <td style={{ color: '#3b82f6' }}>{r.remote}</td>
-                  <td>{r.halfDay}</td>
-                  <td style={{ color: '#ef4444' }}>{r.absent}</td>
-                  <td><strong>{r.totalHours}</strong></td>
+                  <td data-label="Employee ID">{r.employeeId}</td>
+                  <td data-label="Name"><strong>{r.name}</strong></td>
+                  <td data-label="Present" style={{ color: '#10b981' }}>{r.present}</td>
+                  <td data-label="Late" style={{ color: '#f59e0b' }}>{r.late}</td>
+                  <td data-label="Remote" style={{ color: '#3b82f6' }}>{r.remote}</td>
+                  <td data-label="Half-day">{r.halfDay}</td>
+                  <td data-label="Absent" style={{ color: '#ef4444' }}>{r.absent}</td>
+                  <td data-label="Total Hours"><strong>{r.totalHours}</strong></td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>
