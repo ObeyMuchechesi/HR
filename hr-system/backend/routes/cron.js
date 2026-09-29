@@ -52,21 +52,16 @@ router.get('/mark-absents', authEither, async (req, res) => {
         notes: 'Auto-marked absent (no check-in recorded)'
       })));
     }
-    res.json({
-      message: `Marked ${targets.length} employee(s) absent for ${day.toISOString().slice(0, 10)}`,
-      marked: targets.length,
-      skipped: { alreadyRecorded: existing.length, onLeave: onLeave.length }
-    });
-
-    // Daily close-of-business summary to admins (in-app + email if SMTP set)
+    // Daily close-of-business summary to admins (in-app + email if SMTP set).
+    // MUST run before res.json: serverless freezes the function once the
+    // response is sent, so background work after it never completes.
     if (!req.query.noSummary) {
       const present = await Attendance.countDocuments({ date: day, status: 'Present' });
       const late = await Attendance.countDocuments({ date: day, status: 'Late' });
       const remote = await Attendance.countDocuments({ date: day, status: 'Remote' });
       const absent = await Attendance.countDocuments({ date: day, status: 'Absent' });
-      const onLeaveToday = onLeave.length;
       const dayStr = day.toISOString().slice(0, 10);
-      const summary = `Present ${present} · Late ${late} · Remote ${remote} · Absent ${absent} · On leave ${onLeaveToday}`;
+      const summary = `Present ${present} · Late ${late} · Remote ${remote} · Absent ${absent} · On leave ${onLeave.length}`;
       await notify({
         roles: ['admin', 'hr'],
         title: `Daily attendance summary — ${dayStr}`,
@@ -75,6 +70,12 @@ router.get('/mark-absents', authEither, async (req, res) => {
         email: true
       });
     }
+
+    res.json({
+      message: `Marked ${targets.length} employee(s) absent for ${day.toISOString().slice(0, 10)}`,
+      marked: targets.length,
+      skipped: { alreadyRecorded: existing.length, onLeave: onLeave.length }
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
