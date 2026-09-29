@@ -31,9 +31,17 @@ async function email(to, subject, text) {
  */
 async function notify({ roles = [], userIds = [], title, body = '', link = '', email: wantEmail = false }) {
   try {
-    const filter = { active: true, ...(roles.length ? { role: { $in: roles } } : {}) };
-    if (userIds.length) filter._id = { $in: userIds };
-    const users = await User.find(filter).select('name email');
+    // roles and userIds are OR-ed: everyone matching either gets notified
+    const queries = [];
+    if (roles.length) queries.push(User.find({ active: true, role: { $in: roles } }).select('name email'));
+    if (userIds.length) queries.push(User.find({ active: true, _id: { $in: userIds } }).select('name email'));
+    const results = await Promise.all(queries);
+    const seen = new Set();
+    const users = [];
+    results.flat().forEach(u => {
+      const k = u._id.toString();
+      if (!seen.has(k)) { seen.add(k); users.push(u); }
+    });
     if (users.length === 0) return;
 
     await Notification.insertMany(users.map(u => ({
