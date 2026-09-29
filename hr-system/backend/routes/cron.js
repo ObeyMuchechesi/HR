@@ -109,11 +109,14 @@ router.get('/holiday-announce', authEither, async (req, res) => {
       return res.json({ announced: false, reason: 'Not a public holiday' });
     }
 
-    // Idempotency: skip if an announcement for this day already went out.
-    const dayEnd = new Date(day.getTime() + 86400000);
+    // Idempotency: skip if this exact announcement already went out in the
+    // last 20 hours (covers cron retries and manual re-triggers; a yearly
+    // recurrence is always >20h away). createdAt is the SEND time, not the
+    // holiday date, so matching on the holiday's own day window would miss
+    // manual triggers for future dates.
     const already = await Notification.exists({
       title: `Public holiday today — ${hol.name} 🇿🇼`,
-      createdAt: { $gte: day, $lt: dayEnd }
+      createdAt: { $gte: new Date(Date.now() - 20 * 3600 * 1000) }
     });
     if (already) {
       return res.json({ announced: false, reason: 'Already announced today', holiday: hol.name });
