@@ -1,7 +1,9 @@
 const express = require('express');
 const Leave = require('../models/Leave');
 const Employee = require('../models/Employee');
+const User = require('../models/User');
 const { protect, authorize } = require('../middleware/auth');
+const { notify } = require('../utils/notify');
 const router = express.Router();
 
 // GET leaves
@@ -43,6 +45,20 @@ router.post('/', protect, async (req, res) => {
     const leave = await Leave.create({
       employee, leaveType, startDate: start, endDate: end, days, reason
     });
+
+    // Notify admins/HR (and the requester for visibility)
+    const emp = await Employee.findById(employee).select('firstName lastName');
+    const name = emp ? `${emp.firstName} ${emp.lastName}` : 'An employee';
+    const range = `${start.toISOString().slice(0, 10)} → ${end.toISOString().slice(0, 10)}`;
+    await notify({
+      roles: ['admin', 'hr', 'manager'],
+      userIds: [req.user._id],
+      title: 'New leave request',
+      body: `${name} requested ${leaveType} leave (${days} day${days > 1 ? 's' : ''}), ${range}`,
+      link: '/leaves',
+      email: true
+    });
+
     res.status(201).json(leave);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -79,6 +95,21 @@ router.put('/:id', protect, authorize('admin', 'hr', 'manager'), async (req, res
       leave.rejectionReason = rejectionReason || '';
     }
     await leave.save();
+
+    // Tell the requester the outcome
+    const leaveUser = await User.findOne({ employee: leave.employee, active: true }).select('_id');
+    if (leaveUser) {
+      await notify({
+        userIds: [leaveUser._id],
+        title: `Leave ${status.toLowerCase()}`,
+        body: status === 'Approved'
+          ? `Your ${leave.leaveType} leave (${leave.days} day${leave.days > 1 ? 's' : ''} from ${leave.startDate.toISOString().slice(0, 10)}) was approved by ${req.user.name}.`
+          : `Your ${leave.leaveType} leave request was rejected${leave.rejectionReason ? `: ${leave.rejectionReason}` : ''}.`,
+        link: '/leaves',
+        email: true
+      });
+    }
+
     res.json(leave);
   } catch (error) {
     res.status(400).json({ message: error.message });

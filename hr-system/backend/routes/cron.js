@@ -4,6 +4,7 @@ const Attendance = require('../models/Attendance');
 const Employee = require('../models/Employee');
 const Leave = require('../models/Leave');
 const { protect } = require('../middleware/auth');
+const { notify, email } = require('../utils/notify');
 
 // Vercel Cron authenticates with CRON_SECRET; humans fall through to JWT auth.
 const authEither = (req, res, next) => {
@@ -56,6 +57,24 @@ router.get('/mark-absents', authEither, async (req, res) => {
       marked: targets.length,
       skipped: { alreadyRecorded: existing.length, onLeave: onLeave.length }
     });
+
+    // Daily close-of-business summary to admins (in-app + email if SMTP set)
+    if (!req.query.noSummary) {
+      const present = await Attendance.countDocuments({ date: day, status: 'Present' });
+      const late = await Attendance.countDocuments({ date: day, status: 'Late' });
+      const remote = await Attendance.countDocuments({ date: day, status: 'Remote' });
+      const absent = await Attendance.countDocuments({ date: day, status: 'Absent' });
+      const onLeaveToday = onLeave.length;
+      const dayStr = day.toISOString().slice(0, 10);
+      const summary = `Present ${present} · Late ${late} · Remote ${remote} · Absent ${absent} · On leave ${onLeaveToday}`;
+      await notify({
+        roles: ['admin', 'hr'],
+        title: `Daily attendance summary — ${dayStr}`,
+        body: summary,
+        link: '/attendance',
+        email: true
+      });
+    }
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
