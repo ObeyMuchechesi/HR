@@ -278,8 +278,11 @@ router.put('/:id', protect, async (req, res) => {
     }
     await record.save();
     if (isAdminish) {
+      // Show times as the admin entered them (their local timezone)
+      const off = Number(req.body.tzOffset) || 0;
+      const asLocal = (d) => (d ? new Date(d.getTime() - off * 60000).toISOString().slice(11, 16) : '—');
       await audit(req, 'attendance.edit', `${emp?.firstName} ${emp?.lastName}`,
-        `${record.date.toISOString().slice(0, 10)} → in ${record.checkIn ? record.checkIn.toISOString().slice(11, 16) : '—'}, out ${record.checkOut ? record.checkOut.toISOString().slice(11, 16) : '—'}, ${record.status}`);
+        `${record.date.toISOString().slice(0, 10)} → in ${asLocal(record.checkIn)}, out ${asLocal(record.checkOut)}, ${record.status}`);
     }
     res.json(record);
   } catch (error) {
