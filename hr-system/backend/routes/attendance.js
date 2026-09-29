@@ -245,12 +245,12 @@ router.post('/checkout-all', protect, authorize('admin', 'hr', 'manager'), async
 router.post('/', protect, async (req, res) => {
   try {
     let { employee, status, notes } = req.body;
-    // Employees can only check themselves in
-    if (req.user.role === 'employee') {
+    // Non-admins always check themselves in; admins may target anyone.
+    // Any role with a linked employee profile can self check-in.
+    if (!['admin', 'hr', 'manager'].includes(req.user.role) || !employee) {
       if (!req.user.employee) return res.status(403).json({ message: 'No employee profile linked to your account' });
       employee = req.user.employee;
     }
-    if (!employee) return res.status(400).json({ message: 'Employee is required' });
 
     // On approved leave today -> cannot check in
     const day = new Date();
