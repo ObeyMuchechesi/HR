@@ -1,6 +1,7 @@
 const express = require('express');
 const Attendance = require('../models/Attendance');
 const Employee = require('../models/Employee');
+const Leave = require('../models/Leave');
 const AuditLog = require('../models/AuditLog');
 const { protect, authorize } = require('../middleware/auth');
 const router = express.Router();
@@ -8,7 +9,6 @@ const router = express.Router();
 // Parse a YYYY-MM-DD string as UTC midnight (consistent with seeded records)
 const dayUtc = (dateStr) => new Date(`${dateStr}T00:00:00.000Z`);
 const hoursBetween = (a, b) => Math.max(0, Math.round(((b - a) / 36e5) * 100) / 100);
-const fmt = (d) => (d ? new Date(d).toISOString().replace('T', ' ').slice(0, 16) + ' UTC' : '—');
 
 // Convert admin-entered local date+time to the true UTC instant.
 // Browsers run in the admin's timezone; serverless runs in UTC, so the
@@ -18,6 +18,18 @@ const localToUtc = (dateStr, timeStr, tzOffsetMin) => {
   if (Number.isNaN(d.getTime())) return d;
   d.setUTCMinutes(d.getUTCMinutes() + (Number(tzOffsetMin) || 0));
   return d;
+};
+
+// Returns true if the employee has approved leave covering the given day.
+const onApprovedLeave = async (employeeId, day) => {
+  const dayEnd = new Date(day.getTime() + 86400000);
+  const count = await Leave.countDocuments({
+    employee: employeeId,
+    status: 'Approved',
+    startDate: { $lte: dayEnd },
+    endDate: { $gte: day }
+  });
+  return count > 0;
 };
 
 async function audit(req, action, target, details) {
@@ -48,9 +60,8 @@ router.get('/report', protect, authorize('admin', 'hr', 'manager'), async (req, 
     const start = dayUtc(`${monthStr}-01`);
     const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
 
-    const match = { date: { $gte: start, $lt: end } };
     const rows = await Attendance.aggregate([
-      { $match: match },
+      { $match: { date: { $gte: start, $lt: end } } },
       { $group: {
         _id: '$employee',
         present: { $sum: { $cond: [{ $eq: ['$status', 'Present'] }, 1, 0] } },
@@ -144,6 +155,11 @@ router.post('/manual', protect, authorize('admin', 'hr', 'manager'), async (req,
     const exists = await Attendance.findOne({ employee, date: day });
     if (exists) return res.status(400).json({ message: 'A record already exists for this employee on that date' });
 
+    // On approved leave for that day -> no attendance record at all
+    if (await onApprovedLeave(employee, day)) {
+      return res.status(400).json({ message: 'This employee is on approved leave for that date and cannot be checked in' });
+    }
+
     const emp = await Employee.findById(employee).select('firstName lastName');
     const record = await Attendance.create({
       employee,
@@ -170,7 +186,19 @@ router.post('/checkin-all', protect, authorize('admin', 'hr', 'manager'), async 
     const at = new Date();
     const staff = await Employee.find({ status: { $ne: 'Terminated' } }).select('_id firstName lastName');
     const existing = await Attendance.find({ date: day }).distinct('employee');
-    const missing = staff.filter(e => !existing.some(id => id.equals(e._id)));
+
+    // Employees on approved leave are skipped, never checked in
+    const dayEnd = new Date(day.getTime() + 86400000);
+    const onLeave = await Leave.find({
+      status: 'Approved',
+      startDate: { $lte: dayEnd },
+      endDate: { $gte: day }
+    }).distinct('employee');
+
+    const missing = staff.filter(e =>
+      !existing.some(id => id.equals(e._id)) &&
+      !onLeave.some(id => id.equals(e._id))
+    );
     if (missing.length > 0) {
       await Attendance.insertMany(missing.map(e => ({
         employee: e._id,
@@ -180,8 +208,15 @@ router.post('/checkin-all', protect, authorize('admin', 'hr', 'manager'), async 
         notes: `Bulk check-in by ${req.user.name}`
       })));
     }
-    await audit(req, 'attendance.bulk-checkin', `${missing.length} employees`, `Bulk check-in for ${day.toISOString().slice(0, 10)}`);
-    res.json({ message: `Checked in ${missing.length} employee(s)`, created: missing.length, skipped: staff.length - missing.length });
+    await audit(req, 'attendance.bulk-checkin', `${missing.length} employees`, `Bulk check-in for ${day.toISOString().slice(0, 10)}${onLeave.length ? `, ${onLeave.length} on leave skipped` : ''}`);
+    res.json({
+      message: onLeave.length
+        ? `Checked in ${missing.length} employee(s), ${onLeave.length} on leave skipped`
+        : `Checked in ${missing.length} employee(s)`,
+      created: missing.length,
+      skipped: staff.length - missing.length,
+      onLeaveSkipped: onLeave.length
+    });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -216,6 +251,14 @@ router.post('/', protect, async (req, res) => {
       employee = req.user.employee;
     }
     if (!employee) return res.status(400).json({ message: 'Employee is required' });
+
+    // On approved leave today -> cannot check in
+    const day = new Date();
+    day.setUTCHours(0, 0, 0, 0);
+    if (await onApprovedLeave(employee, day)) {
+      return res.status(400).json({ message: 'You are on approved leave today — no check-in needed. Enjoy your time off!' });
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     let record = await Attendance.findOne({ employee, date: today });
@@ -246,6 +289,10 @@ router.put('/:id', protect, async (req, res) => {
     if (isAdminish && req.body.date) {
       const day = dayUtc(req.body.date);
       if (Number.isNaN(day.getTime())) return res.status(400).json({ message: 'Invalid date' });
+      // Moving a record onto a leave day is not allowed either
+      if (await onApprovedLeave(record.employee, day)) {
+        return res.status(400).json({ message: 'That date falls within approved leave for this employee' });
+      }
       record.date = day;
     }
     if (isAdminish && req.body.checkInTime) {
