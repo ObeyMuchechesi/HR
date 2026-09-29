@@ -87,4 +87,39 @@ router.put('/role', protect, authorize('admin'), async (req, res) => {
   }
 });
 
+// PUT /api/auth/change-password — self-service for ANY logged-in user.
+// Requires the current password; rejects weak new passwords; issues a fresh
+// token so the session continues seamlessly.
+router.put('/change-password', protect, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current and new password are required' });
+    }
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({ message: 'New password must be at least 6 characters' });
+    }
+    if (newPassword === currentPassword) {
+      return res.status(400).json({ message: 'New password must be different from the current one' });
+    }
+    // req.user comes from the protect middleware; re-fetch to verify the password
+    // against the stored hash (req.user.password is not the real hash).
+    const user = await User.findById(req.user._id).select('+password');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!(await user.matchPassword(currentPassword))) {
+      // 400 (not 401) on purpose: the client's interceptor logs out on 401,
+      // and a wrong current password shouldn't end the session.
+      return res.status(400).json({ message: 'Current password is incorrect' });
+    }
+    user.password = newPassword; // hashed by the User model's pre-save hook
+    await user.save();
+    res.json({
+      message: 'Password updated successfully',
+      token: generateToken(user._id)
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 module.exports = router;

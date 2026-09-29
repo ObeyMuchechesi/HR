@@ -14,7 +14,8 @@ const Sidebar = ({ open, onClose }) => {
     { to: '/attendance', label: 'Attendance', icon: '🕐' },
     { to: '/payroll', label: 'Payroll', icon: '💰' },
     ...(isReports ? [{ to: '/reports', label: 'Reports', icon: '📈' }] : []),
-    ...(isAdmin ? [{ to: '/users', label: 'Users & Roles', icon: '🔑' }] : [])
+    ...(isAdmin ? [{ to: '/users', label: 'Users & Roles', icon: '🔑' }] : []),
+    { to: '/profile', label: 'My Profile', icon: '⚙️' }
   ];
 
   return (
