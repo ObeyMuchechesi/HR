@@ -95,4 +95,55 @@ const holidayInfo = (date) => {
   return { isHoliday: name !== null, name };
 };
 
-module.exports = { zimbabweHolidays, holidayName, isPublicHoliday, holidayInfo, easterSunday };
+// All holidays within [start, end] (inclusive, UTC days) as
+// [{ date: Date, name: String }] sorted by date. Years covered by the
+// range are generated on demand, so long ranges work too.
+const holidaysInRange = (start, end) => {
+  const s = new Date(start); const e = new Date(end);
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime()) || s > e) return [];
+  const out = [];
+  for (let y = s.getUTCFullYear(); y <= e.getUTCFullYear(); y++) {
+    for (const h of holidaysForYear(y)) {
+      if (h.date >= s && h.date <= e) out.push(h);
+    }
+  }
+  return out;
+};
+
+// Next `limit` holidays from a given day (defaults to today, UTC), inclusive.
+// Weekend-only skipper: holidays that land on Sat/Sun stay listed — whether
+// Zimbabwe declares a substitute day off varies by notice, so the UI shows
+// them with their actual weekday and lets humans decide.
+const upcomingHolidays = (from = new Date(), limit = 5) => {
+  const start = new Date(from);
+  start.setUTCHours(0, 0, 0, 0);
+  const end = new Date(start.getTime() + 400 * 86400000); // >13 months of horizon
+  return holidaysInRange(start, end).slice(0, Math.max(1, limit));
+};
+
+// Working days in a month: Mon–Fri (UTC days) MINUS public holidays.
+// Holidays falling on a weekend don't reduce the count (they were never
+// working days). Returns { total, weekdays, holidays, workingDays,
+// holidayList: [{ date, name }] }.
+const workingDaysInMonth = (year, month) => {
+  // month is 1-indexed here (API surface); internal Date months are 0-indexed.
+  const first = new Date(Date.UTC(year, month - 1, 1));
+  if (Number.isNaN(first.getTime()) || month < 1 || month > 12) {
+    return { total: 0, weekdays: 0, holidays: 0, workingDays: 0, holidayList: [] };
+  }
+  const last = new Date(Date.UTC(year, month, 0)); // day 0 of next month = last day
+  const weekdayCount = (from, to) => {
+    let n = 0;
+    for (let d = new Date(from); d <= to; d = new Date(d.getTime() + 86400000)) {
+      const wd = d.getUTCDay();
+      if (wd !== 0 && wd !== 6) n++;
+    }
+    return n;
+  };
+  const holidayList = holidaysInRange(first, last);
+  const weekdays = weekdayCount(first, last);
+  const onWeekday = holidayList.filter(h => h.date.getUTCDay() !== 0 && h.date.getUTCDay() !== 6).length;
+  return { total: last.getUTCDate(), weekdays, holidays: holidayList.length, workingDays: weekdays - onWeekday, holidayList };
+};
+
+module.exports = { zimbabweHolidays, holidayName, isPublicHoliday, holidayInfo, easterSunday, holidaysInRange, upcomingHolidays, workingDaysInMonth };

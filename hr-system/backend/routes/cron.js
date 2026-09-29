@@ -3,6 +3,7 @@ const router = express.Router();
 const Attendance = require('../models/Attendance');
 const Employee = require('../models/Employee');
 const Leave = require('../models/Leave');
+const Notification = require('../models/Notification');
 const { protect } = require('../middleware/auth');
 const { notify, email } = require('../utils/notify');
 const { holidayInfo } = require('../utils/holidays');
@@ -85,6 +86,47 @@ router.get('/mark-absents', authEither, async (req, res) => {
       holiday: hol.isHoliday ? hol.name : null,
       skipped: { alreadyRecorded: existing.length, onLeave: onLeave.length }
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// GET /api/cron/holiday-announce[?day=YYYY-MM-DD]
+// Runs daily shortly after CAT midnight. If today is a Zimbabwe public holiday,
+// sends a company-wide in-app announcement (all roles) — once per holiday per day,
+// so cron retries and manual triggers never spam. Auth: CRON_SECRET or admin JWT.
+router.get('/holiday-announce', authEither, async (req, res) => {
+  try {
+    if (req.user && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin only' });
+    }
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(req.query.day || '')
+      ? new Date(`${req.query.day}T00:00:00.000Z`)
+      : new Date(new Date().setUTCHours(0, 0, 0, 0));
+
+    const hol = holidayInfo(day);
+    if (!hol.isHoliday) {
+      return res.json({ announced: false, reason: 'Not a public holiday' });
+    }
+
+    // Idempotency: skip if an announcement for this day already went out.
+    const dayEnd = new Date(day.getTime() + 86400000);
+    const already = await Notification.exists({
+      title: `Public holiday today — ${hol.name} 🇿🇼`,
+      createdAt: { $gte: day, $lt: dayEnd }
+    });
+    if (already) {
+      return res.json({ announced: false, reason: 'Already announced today', holiday: hol.name });
+    }
+
+    await notify({
+      roles: ['admin', 'hr', 'manager', 'employee'],
+      title: `Public holiday today — ${hol.name} 🇿🇼`,
+      body: `${hol.name} is a Zimbabwe public holiday. The office is closed — no check-in needed. Enjoy the day!`,
+      link: '/',
+      email: true
+    });
+    res.json({ announced: true, holiday: hol.name, day: day.toISOString().slice(0, 10) });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

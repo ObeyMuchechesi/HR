@@ -12,6 +12,7 @@ const Dashboard = () => {
   const [attendance, setAttendance] = useState({ present: 0, absent: 0, late: 0, remote: 0, holiday: 0, isPublicHoliday: false, holidayName: null });
   const [pendingLeaves, setPendingLeaves] = useState([]);
   const [audit, setAudit] = useState([]);
+  const [upcoming, setUpcoming] = useState([]);
   const [updatedAt, setUpdatedAt] = useState(null);
 
   useEffect(() => {
@@ -33,6 +34,14 @@ const Dashboard = () => {
     load();
     const t = setInterval(load, POLL_MS);
     return () => { alive = false; clearInterval(t); };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    api.get('/holidays/upcoming?limit=5')
+      .then(r => { if (alive) setUpcoming(r.data.holidays || []); })
+      .catch(() => {});
+    return () => { alive = false; };
   }, []);
 
   useEffect(() => {
@@ -125,6 +134,27 @@ const Dashboard = () => {
             <div className="empty">Public holiday — {attendance.holidayName} 🇿🇼</div>
           )}
         </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 0 }}>
+        <h2>Upcoming Zimbabwe Public Holidays 🇿🇼</h2>
+        {upcoming.length === 0 ? (
+          <div className="empty">No holidays loaded</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            {upcoming.map(h => (
+              <div key={h.date} className="stat-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{h.name}</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>{h.weekday} · {new Date(`${h.date}T00:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}</div>
+                </div>
+                <span className={`badge ${h.daysUntil === 0 ? 'badge-green' : h.daysUntil <= 14 ? 'badge-amber' : 'badge-gray'}`}>
+                  {h.daysUntil === 0 ? 'Today' : `in ${h.daysUntil}d`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className={`two-col ${canAudit ? '' : 'two-col-single'}`}>

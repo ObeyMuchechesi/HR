@@ -14,6 +14,9 @@ const Payroll = () => {
     deductions: { tax: 0, pension: 0, insurance: 0, other: 0 }
   });
   const canEdit = ['admin', 'hr'].includes(user?.role);
+  const [wd, setWd] = useState(null);
+  const [wdYear, setWdYear] = useState(new Date().getFullYear());
+  const [wdMonth, setWdMonth] = useState(new Date().getMonth() + 1);
 
   const load = async () => {
     const { data } = await api.get('/payroll');
@@ -24,6 +27,15 @@ const Payroll = () => {
     api.get('/employees').then(r => setEmployees(r.data));
     load();
   }, []);
+
+  // Working days for the selected month (weekdays minus ZW public holidays)
+  useEffect(() => {
+    let alive = true;
+    api.get(`/holidays/working-days?year=${wdYear}&month=${wdMonth}`)
+      .then(r => { if (alive) setWd(r.data); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [wdYear, wdMonth]);
 
   const calcNet = () => {
     const a = Object.values(form.allowances).reduce((x, y) => x + Number(y || 0), 0);
@@ -55,6 +67,27 @@ const Payroll = () => {
         <h2>Payroll Records ({records.length})</h2>
         {canEdit && <button className="btn btn-primary" onClick={() => setShowModal(true)}>+ Generate Payroll</button>}
       </div>
+
+      {canEdit && wd && (
+        <div className="card" style={{ marginBottom: 16, background: '#f8fafc' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+            <strong>Working days</strong>
+            <select value={wdMonth} onChange={e => setWdMonth(Number(e.target.value))}>
+              {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{monthName(i + 1)}</option>)}
+            </select>
+            <input type="number" value={wdYear} onChange={e => setWdYear(Number(e.target.value))} style={{ width: 90 }} />
+            <span className="badge badge-green" style={{ padding: '6px 12px' }}>{wd.workingDays} working days</span>
+            <span style={{ color: '#64748b', fontSize: 13 }}>{wd.weekdays} weekdays − {wd.publicHolidays} ZW public holidays</span>
+          </div>
+          {wd.holidays.length > 0 && (
+            <div style={{ marginTop: 10, fontSize: 13, color: '#475569' }}>
+              {wd.holidays.map(h => (
+                <div key={h.date}>• {h.date} — {h.name}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="card">
         {records.length === 0 ? (
