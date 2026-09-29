@@ -4,6 +4,7 @@ const Employee = require('../models/Employee');
 const Leave = require('../models/Leave');
 const AuditLog = require('../models/AuditLog');
 const { protect, authorize } = require('../middleware/auth');
+const { holidayInfo } = require('../utils/holidays');
 const router = express.Router();
 
 // Parse a YYYY-MM-DD string as UTC midnight (consistent with seeded records)
@@ -47,7 +48,13 @@ router.get('/summary/today', protect, async (req, res) => {
     const absent = await Attendance.countDocuments({ date: today, status: 'Absent' });
     const late = await Attendance.countDocuments({ date: today, status: 'Late' });
     const remote = await Attendance.countDocuments({ date: today, status: 'Remote' });
-    res.json({ present, absent, late, remote });
+    const holiday = await Attendance.countDocuments({ date: today, status: 'Holiday' });
+    const info = holidayInfo(new Date().toISOString().slice(0, 10));
+    res.json({
+      present, absent, late, remote, holiday,
+      isPublicHoliday: info.isHoliday,
+      holidayName: info.name || null
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -69,6 +76,7 @@ router.get('/report', protect, authorize('admin', 'hr', 'manager'), async (req, 
         remote: { $sum: { $cond: [{ $eq: ['$status', 'Remote'] }, 1, 0] } },
         absent: { $sum: { $cond: [{ $eq: ['$status', 'Absent'] }, 1, 0] } },
         halfDay: { $sum: { $cond: [{ $eq: ['$status', 'Half-day'] }, 1, 0] } },
+        holiday: { $sum: { $cond: [{ $eq: ['$status', 'Holiday'] }, 1, 0] } },
         totalHours: { $sum: { $ifNull: ['$hoursWorked', 0] } }
       } },
       { $sort: { totalHours: -1 } }
@@ -83,14 +91,14 @@ router.get('/report', protect, authorize('admin', 'hr', 'manager'), async (req, 
       return {
         employeeId: e.employeeId || '—',
         name: `${e.firstName || '?'} ${e.lastName || ''}`.trim(),
-        present: r.present, late: r.late, remote: r.remote, absent: r.absent, halfDay: r.halfDay,
+        present: r.present, late: r.late, remote: r.remote, absent: r.absent, halfDay: r.halfDay, holiday: r.holiday,
         totalHours: Math.round(r.totalHours * 100) / 100
       };
     });
     // include employees with no records at all this month
     employees.forEach(e => {
       if (!report.some(r => r.employeeId === e.employeeId)) {
-        report.push({ employeeId: e.employeeId, name: `${e.firstName} ${e.lastName}`, present: 0, late: 0, remote: 0, absent: 0, halfDay: 0, totalHours: 0 });
+        report.push({ employeeId: e.employeeId, name: `${e.firstName} ${e.lastName}`, present: 0, late: 0, remote: 0, absent: 0, halfDay: 0, holiday: 0, totalHours: 0 });
       }
     });
 
@@ -159,6 +167,11 @@ router.post('/manual', protect, authorize('admin', 'hr', 'manager'), async (req,
     if (await onApprovedLeave(employee, day)) {
       return res.status(400).json({ message: 'This employee is on approved leave for that date and cannot be checked in' });
     }
+    // Zimbabwe public holiday -> no work record unless admin explicitly says Holiday
+    const hol = holidayInfo(day);
+    if (hol.isHoliday && status !== 'Holiday') {
+      return res.status(400).json({ message: `${hol.name} is a public holiday — no attendance needed. Use status "Holiday" only if work was actually performed.` });
+    }
 
     const emp = await Employee.findById(employee).select('firstName lastName');
     const record = await Attendance.create({
@@ -195,6 +208,9 @@ router.post('/checkin-all', protect, authorize('admin', 'hr', 'manager'), async 
       endDate: { $gte: day }
     }).distinct('employee');
 
+    // On a Zimbabwe public holiday, everyone with no record gets Holiday status
+    // instead of Present.
+    const hol = holidayInfo(day);
     const missing = staff.filter(e =>
       !existing.some(id => id.equals(e._id)) &&
       !onLeave.some(id => id.equals(e._id))
@@ -203,19 +219,22 @@ router.post('/checkin-all', protect, authorize('admin', 'hr', 'manager'), async 
       await Attendance.insertMany(missing.map(e => ({
         employee: e._id,
         date: day,
-        checkIn: at,
-        status: 'Present',
-        notes: `Bulk check-in by ${req.user.name}`
+        checkIn: hol.isHoliday ? null : at,
+        status: hol.isHoliday ? 'Holiday' : 'Present',
+        notes: hol.isHoliday ? `Public holiday (${hol.name})` : `Bulk check-in by ${req.user.name}`
       })));
     }
-    await audit(req, 'attendance.bulk-checkin', `${missing.length} employees`, `Bulk check-in for ${day.toISOString().slice(0, 10)}${onLeave.length ? `, ${onLeave.length} on leave skipped` : ''}`);
+    await audit(req, 'attendance.bulk-checkin', `${missing.length} employees`, `Bulk check-in for ${day.toISOString().slice(0, 10)}${onLeave.length ? `, ${onLeave.length} on leave skipped` : ''}${hol.isHoliday ? `, public holiday (${hol.name})` : ''}`);
     res.json({
-      message: onLeave.length
-        ? `Checked in ${missing.length} employee(s), ${onLeave.length} on leave skipped`
-        : `Checked in ${missing.length} employee(s)`,
+      message: hol.isHoliday
+        ? `Public holiday (${hol.name}) — marked ${missing.length} employee(s) as Holiday`
+        : onLeave.length
+          ? `Checked in ${missing.length} employee(s), ${onLeave.length} on leave skipped`
+          : `Checked in ${missing.length} employee(s)`,
       created: missing.length,
       skipped: staff.length - missing.length,
-      onLeaveSkipped: onLeave.length
+      onLeaveSkipped: onLeave.length,
+      holiday: hol.isHoliday ? hol.name : null
     });
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -258,6 +277,11 @@ router.post('/', protect, async (req, res) => {
     if (await onApprovedLeave(employee, day)) {
       return res.status(400).json({ message: 'You are on approved leave today — no check-in needed. Enjoy your time off!' });
     }
+    // Zimbabwe public holiday -> no check-in needed either
+    const hol = holidayInfo(day);
+    if (hol.isHoliday) {
+      return res.status(400).json({ message: `Today is ${hol.name}, a public holiday — no check-in needed. Enjoy the day off!` });
+    }
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -292,6 +316,11 @@ router.put('/:id', protect, async (req, res) => {
       // Moving a record onto a leave day is not allowed either
       if (await onApprovedLeave(record.employee, day)) {
         return res.status(400).json({ message: 'That date falls within approved leave for this employee' });
+      }
+      // ...or onto a Zimbabwe public holiday (unless it stays/moves to Holiday status)
+      const hol = holidayInfo(day);
+      if (hol.isHoliday && !(req.body.status === 'Holiday')) {
+        return res.status(400).json({ message: `${hol.name} is a public holiday — records on that date must have status "Holiday"` });
       }
       record.date = day;
     }

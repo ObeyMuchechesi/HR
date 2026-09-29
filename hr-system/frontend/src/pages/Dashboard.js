@@ -9,7 +9,7 @@ const Dashboard = () => {
   const { user } = useAuth();
   const canAudit = ['admin', 'hr', 'manager'].includes(user?.role);
   const [stats, setStats] = useState({ total: 0, active: 0, onLeave: 0, byDepartment: [] });
-  const [attendance, setAttendance] = useState({ present: 0, absent: 0, late: 0, remote: 0 });
+  const [attendance, setAttendance] = useState({ present: 0, absent: 0, late: 0, remote: 0, holiday: 0, isPublicHoliday: false, holidayName: null });
   const [pendingLeaves, setPendingLeaves] = useState([]);
   const [audit, setAudit] = useState([]);
   const [updatedAt, setUpdatedAt] = useState(null);
@@ -96,7 +96,7 @@ const Dashboard = () => {
         </div>
 
         <div className="card">
-          <h2>Today's Attendance</h2>
+          <h2>Today's Attendance{attendance.isPublicHoliday ? <span className="badge badge-gray" style={{ marginLeft: 8, verticalAlign: 'middle' }}>{attendance.holidayName}</span> : null}</h2>
           <div className="stats-grid" style={{ gridTemplateColumns: '1fr 1fr', marginBottom: 0, gap: 12 }}>
             <div className="stat-card">
               <div className="label">Present</div>
@@ -114,7 +114,16 @@ const Dashboard = () => {
               <div className="label">Absent</div>
               <div className="value" style={{ color: '#ef4444' }}>{attendance.absent}</div>
             </div>
+            {attendance.holiday > 0 && (
+              <div className="stat-card">
+                <div className="label">Holiday</div>
+                <div className="value" style={{ color: '#64748b' }}>{attendance.holiday}</div>
+              </div>
+            )}
           </div>
+          {attendance.isPublicHoliday && attendance.holiday === 0 && (
+            <div className="empty">Public holiday — {attendance.holidayName} 🇿🇼</div>
+          )}
         </div>
       </div>
 

@@ -39,9 +39,9 @@ const Reports = () => {
 
   const exportCsv = () => {
     if (!data?.report?.length) return;
-    const header = ['Employee ID', 'Name', 'Present', 'Late', 'Remote', 'Half-day', 'Absent', 'Total Hours'];
+    const header = ['Employee ID', 'Name', 'Present', 'Late', 'Remote', 'Half-day', 'Absent', 'Holiday', 'Total Hours'];
     const lines = data.report.map(r =>
-      [r.employeeId, r.name, r.present, r.late, r.remote, r.halfDay, r.absent, r.totalHours].join(',')
+      [r.employeeId, r.name, r.present, r.late, r.remote, r.halfDay, r.absent, r.holiday ?? 0, r.totalHours].join(',')
     );
     const csv = [header.join(','), ...lines].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -81,7 +81,7 @@ const Reports = () => {
             <thead>
               <tr>
                 <th>Employee ID</th><th>Name</th><th>Present</th><th>Late</th>
-                <th>Remote</th><th>Half-day</th><th>Absent</th><th>Total Hours</th>
+                <th>Remote</th><th>Half-day</th><th>Absent</th><th>Holiday</th><th>Total Hours</th>
               </tr>
             </thead>
             <tbody>
@@ -94,6 +94,7 @@ const Reports = () => {
                   <td data-label="Remote" style={{ color: '#3b82f6' }}>{r.remote}</td>
                   <td data-label="Half-day">{r.halfDay}</td>
                   <td data-label="Absent" style={{ color: '#ef4444' }}>{r.absent}</td>
+                  <td data-label="Holiday">{r.holiday ?? 0}</td>
                   <td data-label="Total Hours"><strong>{r.totalHours}</strong></td>
                 </tr>
               ))}

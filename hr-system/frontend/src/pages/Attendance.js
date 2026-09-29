@@ -13,7 +13,7 @@ const toLocalTime = (iso) => {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-const STATUS_OPTIONS = ['Present', 'Late', 'Remote', 'Half-day', 'Absent'];
+const STATUS_OPTIONS = ['Present', 'Late', 'Remote', 'Half-day', 'Absent', 'Holiday'];
 
 const Attendance = () => {
   const { user } = useAuth();
@@ -133,7 +133,7 @@ const Attendance = () => {
   };
 
   const statusBadge = (status) => {
-    const map = { Present: 'badge-green', Late: 'badge-amber', Absent: 'badge-red', Remote: 'badge-blue', 'Half-day': 'badge-amber' };
+    const map = { Present: 'badge-green', Late: 'badge-amber', Absent: 'badge-red', Remote: 'badge-blue', 'Half-day': 'badge-amber', Holiday: 'badge-gray' };
     return map[status] || 'badge-gray';
   };
 

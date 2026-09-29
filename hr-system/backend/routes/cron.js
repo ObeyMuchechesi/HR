@@ -5,6 +5,7 @@ const Employee = require('../models/Employee');
 const Leave = require('../models/Leave');
 const { protect } = require('../middleware/auth');
 const { notify, email } = require('../utils/notify');
+const { holidayInfo } = require('../utils/holidays');
 
 // Vercel Cron authenticates with CRON_SECRET; humans fall through to JWT auth.
 const authEither = (req, res, next) => {
@@ -44,12 +45,15 @@ router.get('/mark-absents', authEither, async (req, res) => {
       !onLeave.some(id => id.equals(e._id))
     );
 
+    // On a Zimbabwe public holiday everyone without a record gets status
+    // 'Holiday' (no absence counted) instead of 'Absent'.
+    const hol = holidayInfo(day);
     if (targets.length > 0) {
       await Attendance.insertMany(targets.map(e => ({
         employee: e._id,
         date: day,
-        status: 'Absent',
-        notes: 'Auto-marked absent (no check-in recorded)'
+        status: hol.isHoliday ? 'Holiday' : 'Absent',
+        notes: hol.isHoliday ? `Public holiday (${hol.name})` : 'Auto-marked absent (no check-in recorded)'
       })));
     }
     // Daily close-of-business summary to admins (in-app + email if SMTP set).
@@ -60,8 +64,9 @@ router.get('/mark-absents', authEither, async (req, res) => {
       const late = await Attendance.countDocuments({ date: day, status: 'Late' });
       const remote = await Attendance.countDocuments({ date: day, status: 'Remote' });
       const absent = await Attendance.countDocuments({ date: day, status: 'Absent' });
+      const holiday = await Attendance.countDocuments({ date: day, status: 'Holiday' });
       const dayStr = day.toISOString().slice(0, 10);
-      const summary = `Present ${present} · Late ${late} · Remote ${remote} · Absent ${absent} · On leave ${onLeave.length}`;
+      const summary = `Present ${present} · Late ${late} · Remote ${remote} · Absent ${absent} · Holiday ${holiday} · On leave ${onLeave.length}${hol.isHoliday ? ` — ${hol.name} 🇿🇼` : ''}`;
       await notify({
         roles: ['admin', 'hr'],
         title: `Daily attendance summary — ${dayStr}`,
@@ -72,8 +77,12 @@ router.get('/mark-absents', authEither, async (req, res) => {
     }
 
     res.json({
-      message: `Marked ${targets.length} employee(s) absent for ${day.toISOString().slice(0, 10)}`,
+      message: hol.isHoliday
+        ? `Public holiday (${hol.name}) — marked ${targets.length} employee(s) as Holiday for ${day.toISOString().slice(0, 10)}`
+        : `Marked ${targets.length} employee(s) absent for ${day.toISOString().slice(0, 10)}`,
       marked: targets.length,
+      status: hol.isHoliday ? 'Holiday' : 'Absent',
+      holiday: hol.isHoliday ? hol.name : null,
       skipped: { alreadyRecorded: existing.length, onLeave: onLeave.length }
     });
   } catch (error) {
