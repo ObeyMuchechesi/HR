@@ -10,8 +10,8 @@ Full-stack HR platform: **Express + MongoDB Atlas** backend and **React** fronte
 - **Employees** — full CRUD, department assignment, leave balances
 - **Departments** — managers, budgets, live headcount
 - **Leave management** — request/approve/reject, automatic balance deduction on approval (single-approval enforced)
-- **Attendance** — check-in/check-out with hours calculation
-- **Payroll** — allowances/deductions, net-pay computation, mark-as-paid
+- **Attendance** — check-in/check-out with hours calculation; bulk "check in everyone" at a chosen time, manual & bulk check-out
+- **Payroll** — allowances/deductions, net-pay computation, mark-as-paid with the actual payment date
 - **Dashboard** — live stats, department chart, today's attendance summary
 
 New accounts created via public signup always start as `employee`; privileged
@@ -82,5 +82,5 @@ All routes except `/api/auth/register` and `/api/auth/login` require a
 | Employees | CRUD + `GET /stats/dashboard` |
 | Departments | CRUD (delete: admin only) |
 | Leaves | list/create, approve/reject (single-approval), delete (admin/hr) |
-| Attendance | list (self-scoped for employees), check-in, check-out, `GET /summary/today` |
-| Payroll | list (self-scoped for employees), generate, mark paid |
+| Attendance | list (self-scoped for employees), check-in, check-out, manual entry & check-out, check-in/check-out everyone (date + time), `GET /summary/today` |
+| Payroll | list (self-scoped for employees), generate, mark paid (with payment date) |

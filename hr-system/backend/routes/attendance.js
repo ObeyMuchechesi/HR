@@ -192,11 +192,21 @@ router.post('/manual', protect, authorize('admin', 'hr', 'manager'), async (req,
 });
 
 // POST check-in everyone missing a record for a date (admin/hr/manager)
+// Body may override date (YYYY-MM-DD) and checkInTime (HH:MM, admin's local
+// time converted via tzOffset) — defaults to today, right now.
 router.post('/checkin-all', protect, authorize('admin', 'hr', 'manager'), async (req, res) => {
   try {
     const today = new Date();
-    const day = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-    const at = new Date();
+    const dateStr = /^\d{4}-\d{2}-\d{2}$/.test(req.body.date || '')
+      ? req.body.date
+      : `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const day = dayUtc(dateStr);
+    const at = req.body.checkInTime
+      ? localToUtc(dateStr, req.body.checkInTime, req.body.tzOffset)
+      : new Date();
+    if (Number.isNaN(day.getTime())) return res.status(400).json({ message: 'Invalid date' });
+    if (Number.isNaN(at.getTime())) return res.status(400).json({ message: 'Invalid check-in time' });
+    if (at > new Date()) return res.status(400).json({ message: 'Check-in time cannot be in the future' });
     const staff = await Employee.find({ status: { $ne: 'Terminated' } }).select('_id firstName lastName');
     const existing = await Attendance.find({ date: day }).distinct('employee');
 
@@ -216,15 +226,18 @@ router.post('/checkin-all', protect, authorize('admin', 'hr', 'manager'), async 
       !onLeave.some(id => id.equals(e._id))
     );
     if (missing.length > 0) {
+      const atStr = req.body.checkInTime
+        ? ` at ${req.body.checkInTime}`
+        : ` at ${new Date(at.getTime() - (Number(req.body.tzOffset) || 0) * 60000).toISOString().slice(11, 16)}`;
       await Attendance.insertMany(missing.map(e => ({
         employee: e._id,
         date: day,
         checkIn: hol.isHoliday ? null : at,
         status: hol.isHoliday ? 'Holiday' : 'Present',
-        notes: hol.isHoliday ? `Public holiday (${hol.name})` : `Bulk check-in by ${req.user.name}`
+        notes: hol.isHoliday ? `Public holiday (${hol.name})` : `Bulk check-in by ${req.user.name}${atStr}`
       })));
     }
-    await audit(req, 'attendance.bulk-checkin', `${missing.length} employees`, `Bulk check-in for ${day.toISOString().slice(0, 10)}${onLeave.length ? `, ${onLeave.length} on leave skipped` : ''}${hol.isHoliday ? `, public holiday (${hol.name})` : ''}`);
+    await audit(req, 'attendance.bulk-checkin', `${missing.length} employees`, `Bulk check-in for ${day.toISOString().slice(0, 10)}${req.body.checkInTime ? ` at ${req.body.checkInTime}` : ''}${onLeave.length ? `, ${onLeave.length} on leave skipped` : ''}${hol.isHoliday ? `, public holiday (${hol.name})` : ''}`);
     res.json({
       message: hol.isHoliday
         ? `Public holiday (${hol.name}) — marked ${missing.length} employee(s) as Holiday`
@@ -235,6 +248,49 @@ router.post('/checkin-all', protect, authorize('admin', 'hr', 'manager'), async 
       skipped: staff.length - missing.length,
       onLeaveSkipped: onLeave.length,
       holiday: hol.isHoliday ? hol.name : null
+    });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// POST manual single-employee check-out (admin/hr/manager)
+// Body: { employee, date?, checkOutTime?, tzOffset } — date and time default
+// to today/now. Closes the employee's open record and recomputes hours.
+router.post('/checkout-manual', protect, authorize('admin', 'hr', 'manager'), async (req, res) => {
+  try {
+    const { employee, tzOffset } = req.body;
+    if (!employee) return res.status(400).json({ message: 'Employee is required' });
+
+    const today = new Date();
+    const dateStr = /^\d{4}-\d{2}-\d{2}$/.test(req.body.date || '')
+      ? req.body.date
+      : `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const day = dayUtc(dateStr);
+    if (Number.isNaN(day.getTime())) return res.status(400).json({ message: 'Invalid date' });
+
+    const record = await Attendance.findOne({ employee, date: day });
+    if (!record) return res.status(400).json({ message: `No attendance record found for ${dateStr} — use Manual Entry to create one` });
+    if (!record.checkIn) return res.status(400).json({ message: 'This employee has no check-in recorded for that date — nothing to check out' });
+    if (record.checkOut) return res.status(400).json({ message: 'Already checked out — use Edit to change the check-out time' });
+
+    const checkOut = req.body.checkOutTime
+      ? localToUtc(dateStr, req.body.checkOutTime, tzOffset)
+      : new Date();
+    if (Number.isNaN(checkOut.getTime())) return res.status(400).json({ message: 'Invalid check-out time' });
+    if (checkOut < record.checkIn) return res.status(400).json({ message: 'Check-out must be after the check-in time' });
+    if (checkOut > new Date()) return res.status(400).json({ message: 'Check-out time cannot be in the future' });
+
+    record.checkOut = checkOut;
+    record.hoursWorked = hoursBetween(record.checkIn, checkOut);
+    await record.save();
+
+    const emp = await Employee.findById(employee).select('firstName lastName');
+    await audit(req, 'attendance.manual-checkout', `${emp?.firstName} ${emp?.lastName}`,
+      `${dateStr} out ${req.body.checkOutTime || 'now'} · ${record.hoursWorked}h`);
+    res.json({
+      message: `${emp?.firstName || 'Employee'} ${emp?.lastName || ''} checked out at ${req.body.checkOutTime || 'now'} — ${record.hoursWorked}h worked`,
+      record
     });
   } catch (error) {
     res.status(400).json({ message: error.message });

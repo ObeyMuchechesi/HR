@@ -42,12 +42,20 @@ router.post('/', protect, authorize('admin', 'hr'), async (req, res) => {
   }
 });
 
-// PUT mark as paid
+// PUT mark as paid — body may include { paidOn: 'YYYY-MM-DD' } to record the
+// actual payment date (defaults to today).
 router.put('/:id/pay', protect, authorize('admin', 'hr'), async (req, res) => {
   try {
+    let paidAt = new Date();
+    if (req.body.paidOn) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(req.body.paidOn)) {
+        return res.status(400).json({ message: 'Invalid paid date — expected YYYY-MM-DD' });
+      }
+      paidAt = new Date(`${req.body.paidOn}T00:00:00.000Z`);
+    }
     const payroll = await Payroll.findByIdAndUpdate(
       req.params.id,
-      { status: 'Paid', paidAt: new Date() },
+      { status: 'Paid', paidAt },
       { new: true }
     );
     if (!payroll) return res.status(404).json({ message: 'Payroll record not found' });

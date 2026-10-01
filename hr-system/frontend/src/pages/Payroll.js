@@ -2,6 +2,12 @@ import React, { useEffect, useState } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 
+const pad = (n) => String(n).padStart(2, '0');
+const todayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
 const Payroll = () => {
   const { user } = useAuth();
   const [records, setRecords] = useState([]);
@@ -14,6 +20,8 @@ const Payroll = () => {
     deductions: { tax: 0, pension: 0, insurance: 0, other: 0 }
   });
   const canEdit = ['admin', 'hr'].includes(user?.role);
+  const [payId, setPayId] = useState(null);        // record being marked paid
+  const [paidOn, setPaidOn] = useState(todayStr()); // payment date for the modal
   const [wd, setWd] = useState(null);
   const [wdYear, setWdYear] = useState(new Date().getFullYear());
   const [wdMonth, setWdMonth] = useState(new Date().getMonth() + 1);
@@ -54,9 +62,21 @@ const Payroll = () => {
     }
   };
 
-  const markPaid = async (id) => {
-    await api.put(`/payroll/${id}/pay`);
-    load();
+  // Open the paid-date modal; defaults to today but any date can be recorded
+  const askPaidDate = (id) => {
+    setPaidOn(todayStr());
+    setPayId(id);
+  };
+
+  const confirmMarkPaid = async (e) => {
+    e.preventDefault();
+    try {
+      await api.put(`/payroll/${payId}/pay`, { paidOn });
+      setPayId(null);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Error');
+    }
   };
 
   const monthName = (m) => new Date(2000, m - 1).toLocaleString('en', { month: 'long' });
@@ -98,7 +118,7 @@ const Payroll = () => {
             <thead>
               <tr>
                 <th>Employee</th><th>Period</th><th>Basic</th>
-                <th>Allowances</th><th>Deductions</th><th>Net Pay</th><th>Status</th><th>Actions</th>
+                <th>Allowances</th><th>Deductions</th><th>Net Pay</th><th>Status</th><th>Paid On</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -114,9 +134,10 @@ const Payroll = () => {
                     <td data-label="Deductions" style={{ color: '#ef4444' }}>-${ded.toLocaleString()}</td>
                     <td data-label="Net Pay"><strong>${r.netPay.toLocaleString()}</strong></td>
                     <td data-label="Status"><span className={`badge ${r.status === 'Paid' ? 'badge-green' : 'badge-amber'}`}>{r.status}</span></td>
+                    <td data-label="Paid On">{r.paidAt ? new Date(r.paidAt).toLocaleDateString() : '—'}</td>
                     <td data-label="Actions">
                       {canEdit && r.status === 'Pending' && (
-                        <button className="btn btn-success btn-sm" onClick={() => markPaid(r._id)}>Mark Paid</button>
+                        <button className="btn btn-success btn-sm" onClick={() => askPaidDate(r._id)}>Mark Paid</button>
                       )}
                     </td>
                   </tr>
@@ -127,6 +148,27 @@ const Payroll = () => {
           </div>
         )}
       </div>
+
+      {payId && (
+        <div className="modal-overlay" onClick={(e) => e.target.className === 'modal-overlay' && setPayId(null)}>
+          <div className="modal">
+            <h3>Mark Payroll as Paid</h3>
+            <form onSubmit={confirmMarkPaid}>
+              <div className="form-group">
+                <label>Payment date</label>
+                <input type="date" value={paidOn} onChange={e => setPaidOn(e.target.value)} required />
+              </div>
+              <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
+                Defaults to today — change it if the money actually went out on a different day.
+              </p>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setPayId(null)}>Cancel</button>
+                <button type="submit" className="btn btn-success">Mark Paid</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay" onClick={(e) => e.target.className === 'modal-overlay' && setShowModal(false)}>

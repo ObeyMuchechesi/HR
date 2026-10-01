@@ -22,6 +22,10 @@ const Attendance = () => {
   const [employees, setEmployees] = useState([]);
   const [showCheckIn, setShowCheckIn] = useState(false);
   const [showManual, setShowManual] = useState(false);
+  const [showBulkCheckin, setShowBulkCheckin] = useState(false);
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [bulk, setBulk] = useState({ date: todayStr(), checkInTime: '07:58' });
+  const [checkout, setCheckout] = useState({ employee: '', date: todayStr(), checkOutTime: '' });
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ employee: '', status: 'Present', notes: '' });
   const [manual, setManual] = useState({ employee: '', date: todayStr(), checkInTime: '08:00', checkOutTime: '16:00', status: 'Present', notes: '' });
@@ -78,6 +82,43 @@ const Attendance = () => {
     try {
       const { data } = await api.post(`/attendance/${kind}-all`, {});
       flash(data.message);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Error');
+    }
+  };
+
+  // Bulk check-in for a chosen date at a chosen time (defaults: today @ 07:58)
+  const handleBulkCheckin = async (e) => {
+    e.preventDefault();
+    if (!window.confirm(`Check in everyone with no record for ${bulk.date} at ${bulk.checkInTime}?`)) return;
+    try {
+      const { data } = await api.post('/attendance/checkin-all', {
+        date: bulk.date,
+        checkInTime: bulk.checkInTime,
+        tzOffset: new Date().getTimezoneOffset()
+      });
+      setShowBulkCheckin(false);
+      flash(data.message);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Error');
+    }
+  };
+
+  // Manual single-employee check-out at a chosen time (empty = now)
+  const handleManualCheckout = async (e) => {
+    e.preventDefault();
+    try {
+      const { data } = await api.post('/attendance/checkout-manual', {
+        employee: checkout.employee,
+        date: checkout.date,
+        checkOutTime: checkout.checkOutTime || undefined,
+        tzOffset: new Date().getTimezoneOffset()
+      });
+      setShowCheckout(false);
+      setCheckout({ employee: '', date: todayStr(), checkOutTime: '' });
+      flash(data.message || 'Checked out');
       load();
     } catch (err) {
       alert(err.response?.data?.message || 'Error');
@@ -146,7 +187,12 @@ const Attendance = () => {
             style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #cbd5e1' }} />
           {isAdminish && (
             <>
-              <button className="btn btn-secondary" onClick={() => handleBulk('checkin')}>✅ Check In Everyone</button>
+              <button className="btn btn-secondary" onClick={() => setShowBulkCheckin(true)}>✅ Check In Everyone</button>
+              <button className="btn btn-secondary" onClick={() => {
+                const d = new Date();
+                setCheckout(c => ({ ...c, date: todayStr(), checkOutTime: `${pad(d.getHours())}:${pad(d.getMinutes())}` }));
+                setShowCheckout(true);
+              }}>🚪 Manual Check Out</button>
               <button className="btn btn-secondary" onClick={() => handleBulk('checkout')}>🏁 Check Out Everyone</button>
               <button className="btn btn-secondary" onClick={() => setShowManual(true)}>➕ Manual Entry</button>
               <button className="btn btn-primary" onClick={() => setShowCheckIn(true)}>+ Check In</button>
@@ -193,6 +239,58 @@ const Attendance = () => {
           </div>
         )}
       </div>
+
+      {showBulkCheckin && (
+        <Modal title="Check In Everyone" onClose={() => setShowBulkCheckin(false)}>
+          <form onSubmit={handleBulkCheckin}>
+            <div className="form-group">
+              <label>Date</label>
+              <input type="date" value={bulk.date} onChange={e => setBulk({ ...bulk, date: e.target.value })} required />
+            </div>
+            <div className="form-group">
+              <label>Check-in time</label>
+              <input type="time" value={bulk.checkInTime} onChange={e => setBulk({ ...bulk, checkInTime: e.target.value })} required />
+            </div>
+            <div className="form-group">
+              <label>Notes</label>
+              <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
+                Everyone without a record on that date is checked in at the chosen time.
+                Employees on approved leave are skipped, and future times are not allowed.
+              </p>
+            </div>
+            <ModalActions onClose={() => setShowBulkCheckin(false)} submitLabel="Check In Everyone" />
+          </form>
+        </Modal>
+      )}
+
+      {showCheckout && (
+        <Modal title="Manual Check Out" onClose={() => setShowCheckout(false)}>
+          <form onSubmit={handleManualCheckout}>
+            <div className="form-group">
+              <label>Employee</label>
+              <select value={checkout.employee} onChange={e => setCheckout({ ...checkout, employee: e.target.value })} required>
+                <option value="">Select...</option>
+                {employees.map(e => <option key={e._id} value={e._id}>{e.firstName} {e.lastName}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Date</label>
+              <input type="date" value={checkout.date} onChange={e => setCheckout({ ...checkout, date: e.target.value })} required />
+            </div>
+            <div className="form-group">
+              <label>Check-out time</label>
+              <input type="time" value={checkout.checkOutTime} onChange={e => setCheckout({ ...checkout, checkOutTime: e.target.value })} required />
+            </div>
+            <div className="form-group">
+              <label>Notes</label>
+              <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
+                Closes the employee's open record for that date and recalculates hours worked.
+              </p>
+            </div>
+            <ModalActions onClose={() => setShowCheckout(false)} submitLabel="Check Out" />
+          </form>
+        </Modal>
+      )}
 
       {showCheckIn && (
         <Modal title="Check In (now)" onClose={() => setShowCheckIn(false)}>
