@@ -84,3 +84,26 @@ All routes except `/api/auth/register` and `/api/auth/login` require a
 | Leaves | list/create, approve/reject (single-approval), delete (admin/hr) |
 | Attendance | list (self-scoped for employees), check-in, check-out, manual entry & check-out, check-in/check-out everyone (date + time), `GET /summary/today` |
 | Payroll | list (self-scoped for employees), generate, mark paid (with payment date) |
+
+## Deployment (Vercel)
+
+Both apps are deployed **with the Vercel CLI, not from Git**. The Vercel projects
+are intentionally **disconnected from this GitHub repository**: a Git-triggered
+build runs at the repo root, where there is no `api/` or `vercel.json`, and
+ships an empty deployment that 404s every route — replacing the working
+production deployment (this took the site down on 2026-10-01).
+
+```bash
+# Backend API  (Vercel project: callcentral-hr-api)
+cd hr-system/backend
+vercel --prod
+
+# Frontend  (Vercel project: frontend) — MUST run from the repo root,
+# because that project's Root Directory is hr-system/frontend
+vercel --prod
+```
+
+- Production: backend `https://callcentral-hr-api.vercel.app`, frontend
+  `https://frontend-obey-muchechesi.vercel.app`
+- Do not reconnect the projects to GitHub in Vercel and do not push empty
+  commits to "force a redeploy" — that is what broke production.
