@@ -137,17 +137,18 @@ router.get('/holiday-announce', authEither, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// AUTO ATTENDANCE (single Vercel cron entry firing twice per weekday)
+// AUTO ATTENDANCE (two Vercel cron entries per weekday — the Hobby plan only
+// allows each cron to fire at most once per day, so the morning and evening
+// passes are separate endpoints/entries)
 //
-// "55 5,22 * * 1-5" in vercel.json hits /api/cron/auto-attendance twice a
-// weekday:
-//   • 05:55 UTC  = 07:55 CAT  → morning pass: every active employee without a
-//     record today is checked in at exactly 07:55 (on-leave staff and public
-//     holidays are skipped; weekends never trigger). If it is Friday, a
-//     weekly attendance summary is generated right after the check-in.
-//   • 22:00 UTC  = 00:00 CAT next day → evening pass: every still-open check-in
-//     is closed at 16:00 CAT (8.08h) and everyone with no record at all is
-//     marked Absent, then the daily summary notification goes out.
+// vercel.json schedules two weekday entries:
+//   • /api/cron/auto-attendance at 05:55 UTC (07:55 CAT) → morning pass: every
+//     active employee without a record today is checked in at exactly 07:55
+//     (on-leave staff and public holidays are skipped; weekends never trigger).
+//     On Fridays a weekly attendance summary is generated right afterwards.
+//   • /api/cron/evening-close at 22:00 UTC → evening pass: every still-open
+//     check-in is closed at 16:00 CAT (8.08h) and everyone with no record at
+//     all is marked Absent, then the daily summary notification goes out.
 // Everything is idempotent, so manual re-triggers and retries are safe.
 // ---------------------------------------------------------------------------
 
@@ -304,42 +305,56 @@ const runEveningClose = async (day) => {
   return { checkedOut: closed, markedAbsent: missing.length, onLeaveSkipped: onLeaveIds.length };
 };
 
-// GET /api/cron/auto-attendance
-// Triggered by the Vercel cron at 05:55Z and 22:00Z weekdays (never weekends,
-// which the schedule itself excludes). Morning = bulk check-in (+weekly
-// summary on Fridays), evening = bulk check-out + absence marking. Auth:
-// CRON_SECRET or a logged-in admin (manual trigger from the UI is safe and
-// idempotent).
+// GET /api/cron/auto-attendance  — MORNING pass (07:55 CAT check-in).
+// Triggered by the Vercel cron at 05:55Z Mon–Fri (weekends never fire, and a
+// day override is still guarded). Auth: CRON_SECRET or a logged-in admin —
+// manual triggers are safe and idempotent.
 router.get('/auto-attendance', authEither, async (req, res) => {
   try {
     if (req.user && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Admin only' });
     }
-    // Optional overrides (useful for manual/admin triggers):
-    // ?day=YYYY-MM-DD runs a specific day, ?pass=morning|evening forces a pass.
+    // Optional override for manual/admin triggers: ?day=YYYY-MM-DD
     const day = /^\d{4}-\d{2}-\d{2}$/.test(req.query.day || '')
       ? new Date(`${req.query.day}T00:00:00.000Z`)
       : dayStart();
     if (Number.isNaN(day.getTime())) return res.status(400).json({ message: 'Invalid day' });
     const dow = day.getUTCDay();
     if (dow === 0 || dow === 6) {
-      return res.json({ skipped: true, reason: 'Weekend — no auto attendance' });
+      return res.json({ skipped: true, reason: 'Weekend — no auto check-in' });
     }
-    const forced = req.query.pass;
-    const morning = forced === 'morning' ? true : forced === 'evening' ? false : new Date().getUTCHours() < 12;
-    if (morning) {
-      const result = await runMorningCheckIn(day);
-      let weekly = null;
-      if (dow === 5) weekly = await runWeeklySummary(day);   // Friday check-in → weekly summary
-      return res.json({
-        pass: 'morning', message: `Auto check-in done: ${result.checkedIn} employee(s)${result.onLeaveSkipped ? `, ${result.onLeaveSkipped} on leave skipped` : ''}${weekly && weekly.generated ? ' · weekly summary generated' : ''}`,
-        ...result,
-        weekly
-      });
+    const result = await runMorningCheckIn(day);
+    let weekly = null;
+    if (dow === 5) weekly = await runWeeklySummary(day);   // Friday check-in → weekly summary
+    return res.json({
+      pass: 'morning',
+      message: `Auto check-in done: ${result.checkedIn} employee(s)${result.onLeaveSkipped ? `, ${result.onLeaveSkipped} on leave skipped` : ''}${weekly && weekly.generated ? ' · weekly summary generated' : ''}`,
+      ...result,
+      weekly
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// GET /api/cron/evening-close  — EVENING pass (16:00 CAT check-out + absents).
+// Triggered by the Vercel cron at 22:00Z Mon–Fri. Auth: CRON_SECRET or admin.
+router.get('/evening-close', authEither, async (req, res) => {
+  try {
+    if (req.user && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin only' });
     }
-    const lateHol = holidayInfo(day);
-    if (lateHol.isHoliday) {
-      return res.json({ pass: 'evening', message: `Public holiday (${lateHol.name}) — nothing to close` });
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(req.query.day || '')
+      ? new Date(`${req.query.day}T00:00:00.000Z`)
+      : dayStart();
+    if (Number.isNaN(day.getTime())) return res.status(400).json({ message: 'Invalid day' });
+    const dow = day.getUTCDay();
+    if (dow === 0 || dow === 6) {
+      return res.json({ skipped: true, reason: 'Weekend — nothing to close' });
+    }
+    const hol = holidayInfo(day);
+    if (hol.isHoliday) {
+      return res.json({ pass: 'evening', message: `Public holiday (${hol.name}) — nothing to close` });
     }
     const result = await runEveningClose(day);
     return res.json({

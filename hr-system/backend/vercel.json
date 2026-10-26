@@ -1,10 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "$comment": "auto-attendance fires twice per weekday: 05:55Z (07:55 CAT auto check-in + Friday weekly summary) and 22:00Z (16:00 CAT close + absent marking). Single cron entry so we stay within the Hobby plan's per-project limit; the endpoint decides the pass by hour.",
   "crons": [
     {
       "path": "/api/cron/auto-attendance",
-      "schedule": "55 5,22 * * 1-5"
+      "schedule": "55 5 * * 1-5"
+    },
+    {
+      "path": "/api/cron/evening-close",
+      "schedule": "0 22 * * 1-5"
     },
     {
       "path": "/api/cron/holiday-announce",

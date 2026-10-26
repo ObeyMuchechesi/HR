@@ -87,27 +87,30 @@ All routes except `/api/auth/register` and `/api/auth/login` require a
 
 ## Attendance automation (Vercel Cron)
 
-The backend runs one cron entry — `55 5,22 * * 1-5` (Mon–Fri) — against
-`GET /api/cron/auto-attendance`, which branches by hour:
+The backend runs two weekday cron entries (Mon–Fri; the Hobby plan allows each
+cron to fire at most once per day, so morning and evening are separate):
 
-- **05:55 UTC (07:55 CAT) — morning pass:** every active employee without a
-  record for the day is automatically checked in at 07:55. Staff on approved
-  leave and Zimbabwe public holidays are skipped; weekends never trigger.
-- **22:00 UTC (after close of business) — evening pass:** every still-open
-  check-in is closed at **16:00 CAT** (8.08h), everyone with no record at all is
-  marked **Absent**, and the daily summary notification goes out.
-- **Fridays:** right after the morning check-in a **weekly attendance
-  summary** notification is generated for admin/hr/manager, listing each
-  person's present days, hours worked and leave for the week (Mon → Fri).
-
+- **`55 5 * * 1-5` → `GET /api/cron/auto-attendance` (05:55 UTC = 07:55 CAT) —
+  morning pass:** every active employee without a record for the day is
+  automatically checked in at 07:55. Staff on approved leave and Zimbabwe
+  public holidays are skipped; weekends never trigger.
+- **`0 22 * * 1-5` → `GET /api/cron/evening-close` (22:00 UTC) — evening pass:**
+  every still-open check-in is closed at **16:00 CAT** (8.08h), everyone with no
+  record at all is marked **Absent**, and the daily summary notification goes out.
+- **`0 2 * * *` → `GET /api/cron/holiday-announce`** unchanged: announces
+  Zimbabwe public holidays.
+- **Fridays:** right after the morning check-in a **weekly attendance summary**
+  notification is generated for admin/hr/manager, listing each person's present
+  days, hours worked and leave for that week (Mon → Fri).
 All passes are idempotent — re-running on the same day changes nothing that
-already exists. Admins can also trigger a specific day/pass by hand:
-`/api/cron/auto-attendance?day=YYYY-MM-DD&pass=morning|evening` (CRON_SECRET
+already exists. Admins can also trigger a specific day by hand:
+`/api/cron/auto-attendance?day=YYYY-MM-DD` or
+`/api/cron/evening-close?day=YYYY-MM-DD` (CRON_SECRET
 or an admin JWT). The old `mark-absents` endpoint remains for the UI button.
 
-> One Vercel cron entry does double duty deliberately: the Hobby plan allows a
-> very small number of crons per project, and a multi-time schedule ("55 5,22")
-> counts as one.
+> Morning and evening are two cron *entries* because Vercel's Hobby plan only
+> allows each cron expression to fire at most once per day (a "55 5,22 ..."
+> dual-time schedule is rejected at deploy time).
 
 ## Deployment (Vercel)
 
