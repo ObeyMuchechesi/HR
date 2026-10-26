@@ -85,6 +85,30 @@ All routes except `/api/auth/register` and `/api/auth/login` require a
 | Attendance | list (self-scoped for employees), check-in, check-out, manual entry & check-out, check-in/check-out everyone (date + time), `GET /summary/today` |
 | Payroll | list (self-scoped for employees), generate, mark paid (with payment date) |
 
+## Attendance automation (Vercel Cron)
+
+The backend runs one cron entry — `55 5,22 * * 1-5` (Mon–Fri) — against
+`GET /api/cron/auto-attendance`, which branches by hour:
+
+- **05:55 UTC (07:55 CAT) — morning pass:** every active employee without a
+  record for the day is automatically checked in at 07:55. Staff on approved
+  leave and Zimbabwe public holidays are skipped; weekends never trigger.
+- **22:00 UTC (after close of business) — evening pass:** every still-open
+  check-in is closed at **16:00 CAT** (8.08h), everyone with no record at all is
+  marked **Absent**, and the daily summary notification goes out.
+- **Fridays:** right after the morning check-in a **weekly attendance
+  summary** notification is generated for admin/hr/manager, listing each
+  person's present days, hours worked and leave for the week (Mon → Fri).
+
+All passes are idempotent — re-running on the same day changes nothing that
+already exists. Admins can also trigger a specific day/pass by hand:
+`/api/cron/auto-attendance?day=YYYY-MM-DD&pass=morning|evening` (CRON_SECRET
+or an admin JWT). The old `mark-absents` endpoint remains for the UI button.
+
+> One Vercel cron entry does double duty deliberately: the Hobby plan allows a
+> very small number of crons per project, and a multi-time schedule ("55 5,22")
+> counts as one.
+
 ## Deployment (Vercel)
 
 Both apps are deployed **with the Vercel CLI, not from Git**. The Vercel projects
