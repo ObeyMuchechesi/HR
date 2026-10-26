@@ -31,6 +31,7 @@ const Attendance = () => {
   const [manual, setManual] = useState({ employee: '', date: todayStr(), checkInTime: '08:00', checkOutTime: '16:00', status: 'Present', notes: '' });
   const [editForm, setEditForm] = useState({ date: '', checkInTime: '', checkOutTime: '', status: '' });
   const [dateFilter, setDateFilter] = useState('');
+  const [pending, setPending] = useState([]);
   const [msg, setMsg] = useState(null);
 
   const load = useCallback(async () => {
@@ -38,7 +39,20 @@ const Attendance = () => {
     if (dateFilter) params.date = dateFilter;
     const { data } = await api.get('/attendance', { params });
     setRecords(data);
-  }, [dateFilter]);
+    if (['admin', 'hr', 'manager'].includes(user?.role)) {
+      api.get('/attendance/pending').then(r => setPending(r.data)).catch(() => {});
+    }
+  }, [dateFilter, user?.role]);
+
+  const decidePending = async (ids, action) => {
+    try {
+      const { data } = await api.post('/attendance/approve', { ids, action });
+      flash(data.message);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Error');
+    }
+  };
 
   useEffect(() => {
     if (isAdminish) {
@@ -203,6 +217,58 @@ const Attendance = () => {
 
       {msg && <div className={`flash ${msg.ok ? 'flash-ok' : 'flash-err'}`}>{msg.text}</div>}
 
+      {isAdminish && pending.length > 0 && (
+        <div className="card" style={{ borderColor: '#f59e0b', marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '14px 16px 0' }}>
+            <h3 style={{ margin: 0 }}>⏳ Awaiting your approval ({pending.length})</h3>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-primary btn-sm"
+                disabled={!pending.some(r => r.approvalState === 'pending-checkin')}
+                onClick={() => decidePending(pending.filter(r => r.approvalState === 'pending-checkin').map(r => r._id), 'approve')}
+              >✅ Approve all check-ins</button>
+              <button
+                className="btn btn-primary btn-sm"
+                disabled={!pending.some(r => r.approvalState === 'pending-checkout')}
+                onClick={() => decidePending(pending.filter(r => r.approvalState === 'pending-checkout').map(r => r._id), 'approve')}
+              >🚪 Approve all check-outs</button>
+            </div>
+          </div>
+          <div className="table-wrap" style={{ marginTop: 10 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Employee</th><th>Date</th><th>Stage</th><th>Proposed</th><th>Notes</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pending.map(r => (
+                  <tr key={r._id}>
+                    <td data-label="Employee"><strong>{r.employee?.firstName} {r.employee?.lastName}</strong></td>
+                    <td data-label="Date">{new Date(r.date).toLocaleDateString()}</td>
+                    <td data-label="Stage">
+                      <span className={`badge ${r.approvalState === 'pending-checkin' ? 'badge-amber' : 'badge-blue'}`}>
+                        {r.approvalState === 'pending-checkin' ? 'Check-in' : 'Check-out'}
+                      </span>
+                    </td>
+                    <td data-label="Proposed">
+                      {r.approvalState === 'pending-checkin'
+                        ? (r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—')
+                        : '16:00'}
+                    </td>
+                    <td data-label="Notes" style={{ maxWidth: 320 }}>{r.notes}</td>
+                    <td data-label="Actions">
+                      <button className="btn btn-primary btn-sm" onClick={() => decidePending([r._id], 'approve')}>Approve</button>
+                      <button className="btn btn-secondary btn-sm" style={{ marginLeft: 6 }} onClick={() => decidePending([r._id], 'reject')}>Reject</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="card">
         {records.length === 0 ? (
           <div className="empty">No attendance records</div>
@@ -223,7 +289,7 @@ const Attendance = () => {
                   <td data-label="Check In">{r.checkIn ? new Date(r.checkIn).toLocaleTimeString() : '—'}</td>
                   <td data-label="Check Out">{r.checkOut ? new Date(r.checkOut).toLocaleTimeString() : '—'}</td>
                   <td data-label="Hours">{r.hoursWorked || 0}</td>
-                  <td data-label="Status"><span className={`badge ${statusBadge(r.status)}`}>{r.status}</span></td>
+                  <td data-label="Status"><span className={`badge ${statusBadge(r.status)}`}>{r.status}</span>{r.approvalState && r.approvalState !== 'approved' && <span className="badge badge-amber" style={{ marginLeft: 6 }}>⏳ pending</span>}</td>
                   <td data-label="Actions">
                     {!r.checkOut && r.checkIn && (
                       <button className="btn btn-secondary btn-sm" onClick={() => handleCheckOut(r._id)}>Check Out</button>

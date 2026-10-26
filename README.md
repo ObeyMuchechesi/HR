@@ -10,7 +10,7 @@ Full-stack HR platform: **Express + MongoDB Atlas** backend and **React** fronte
 - **Employees** — full CRUD, department assignment, leave balances
 - **Departments** — managers, budgets, live headcount
 - **Leave management** — request/approve/reject, automatic balance deduction on approval (single-approval enforced)
-- **Attendance** — check-in/check-out with hours calculation; bulk "check in everyone" at a chosen time, manual & bulk check-out
+- **Attendance** — check-in/check-out with hours calculation; bulk "check in everyone" at a chosen time, manual & bulk check-out; **per-day check-in/check-out approval queue** — the system never permanently records attendance without an admin accepting it, and staff on approved leave are never checked in at all
 - **Payroll** — allowances/deductions, net-pay computation, mark-as-paid with the actual payment date
 - **Dashboard** — live stats, department chart, today's attendance summary
 
@@ -82,7 +82,7 @@ All routes except `/api/auth/register` and `/api/auth/login` require a
 | Employees | CRUD + `GET /stats/dashboard` |
 | Departments | CRUD (delete: admin only) |
 | Leaves | list/create, approve/reject (single-approval), delete (admin/hr) |
-| Attendance | list (self-scoped for employees), check-in, check-out, manual entry & check-out, check-in/check-out everyone (date + time), `GET /summary/today` |
+| Attendance | list (self-scoped for employees), check-in, check-out, manual entry & check-out, check-in/check-out everyone (date + time), `GET /summary/today`, `GET /pending` + `POST /approve` (admin approval queue for auto check-ins/outs), `GET /leave-summary` (per-person leave days per year, admin/hr/manager) |
 | Payroll | list (self-scoped for employees), generate, mark paid (with payment date) |
 
 ## Attendance automation (Vercel Cron)
@@ -92,16 +92,21 @@ cron to fire at most once per day, so morning and evening are separate):
 
 - **`55 5 * * 1-5` → `GET /api/cron/auto-attendance` (05:55 UTC = 07:55 CAT) —
   morning pass:** every active employee without a record for the day is
-  automatically checked in at 07:55. Staff on approved leave and Zimbabwe
-  public holidays are skipped; weekends never trigger.
+  checked in at 07:55 as **`pending-checkin`** — nothing is final until the
+  admin approves it on the Attendance page. Staff on approved leave and
+  Zimbabwe public holidays are skipped entirely (no check-in is even
+  proposed); weekends never trigger.
 - **`0 22 * * 1-5` → `GET /api/cron/evening-close` (22:00 UTC) — evening pass:**
-  every still-open check-in is closed at **16:00 CAT** (8.08h), everyone with no
-  record at all is marked **Absent**, and the daily summary notification goes out.
+  check-ins that are still awaiting approval at end of business become
+  **Absent**; still-open approved check-ins get closed at **16:00 CAT** (8.08h)
+  as **`pending-checkout`** for approval; everyone with no record at all is
+  marked **Absent**; then the daily summary notification goes out.
+- **Fridays:** right after the morning pass, a **weekly attendance summary**
+  notification (in-app + email) listing every person's approved present days,
+  hours worked, and leave for Mon → Fri goes to admin/hr/manager **and all
+  staff** (part of `auto-attendance`, no separate cron).
 - **`0 2 * * *` → `GET /api/cron/holiday-announce`** unchanged: announces
   Zimbabwe public holidays.
-- **Fridays:** right after the morning check-in a **weekly attendance summary**
-  notification is generated for admin/hr/manager, listing each person's present
-  days, hours worked and leave for that week (Mon → Fri).
 All passes are idempotent — re-running on the same day changes nothing that
 already exists. Admins can also trigger a specific day by hand:
 `/api/cron/auto-attendance?day=YYYY-MM-DD` or

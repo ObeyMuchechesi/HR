@@ -42,9 +42,10 @@ async function audit(req, action, target, details) {
 // GET today's summary (declared before /:id)
 router.get('/summary/today', protect, async (req, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const present = await Attendance.countDocuments({ date: today, status: 'Present' });
+    // Records are keyed by UTC midnight (cron + seed both use UTC days),
+    // so "today" must also be the UTC day, not the server's local day.
+    const today = new Date(new Date().setUTCHours(0, 0, 0, 0));
+    const present = await Attendance.countDocuments({ date: today, status: 'Present', approvalState: { $ne: 'pending-checkin' } });
     const absent = await Attendance.countDocuments({ date: today, status: 'Absent' });
     const late = await Attendance.countDocuments({ date: today, status: 'Late' });
     const remote = await Attendance.countDocuments({ date: today, status: 'Remote' });
@@ -71,7 +72,7 @@ router.get('/report', protect, authorize('admin', 'hr', 'manager'), async (req, 
       { $match: { date: { $gte: start, $lt: end } } },
       { $group: {
         _id: '$employee',
-        present: { $sum: { $cond: [{ $eq: ['$status', 'Present'] }, 1, 0] } },
+        present: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'Present'] }, { $ne: ['$approvalState', 'pending-checkin'] }] }, 1, 0] } },
         late: { $sum: { $cond: [{ $eq: ['$status', 'Late'] }, 1, 0] } },
         remote: { $sum: { $cond: [{ $eq: ['$status', 'Remote'] }, 1, 0] } },
         absent: { $sum: { $cond: [{ $eq: ['$status', 'Absent'] }, 1, 0] } },
@@ -116,6 +117,133 @@ router.get('/audit', protect, authorize('admin', 'hr', 'manager'), async (req, r
     res.json(logs);
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+// Leave days per month per person (approved leave only). Returns one row per
+// employee with a per-month breakdown of sick / personal (off) / annual days,
+// plus maternity/paternity/unpaid under 'other'.
+// ?year=YYYY (defaults to the current year)
+router.get('/leave-summary', protect, authorize('admin', 'hr', 'manager'), async (req, res) => {
+  try {
+    const year = /^\d{4}$/.test(req.query.year || '') ? parseInt(req.query.year, 10) : new Date().getUTCFullYear();
+    const start = new Date(Date.UTC(year, 0, 1));
+    const end = new Date(Date.UTC(year + 1, 0, 1));
+
+    const leaves = await Leave.find({
+      status: 'Approved',
+      startDate: { $lt: end },
+      endDate: { $gte: start }
+    }).populate('employee', 'firstName lastName employeeId').lean();
+
+    const people = {};
+    for (const l of leaves) {
+      if (!l.employee) continue;
+      const key = l.employee._id.toString();
+      people[key] = people[key] || {
+        employeeId: l.employee.employeeId,
+        name: `${l.employee.firstName} ${l.employee.lastName}`,
+        byMonth: {},
+        total: { sick: 0, personal: 0, annual: 0, other: 0 }
+      };
+      // Distribute each leave across its month footprint (CAT/UTC+2 view)
+      for (let d = new Date(l.startDate); d < end && d <= l.endDate; d = new Date(new Date(d).getTime() + 86400000)) {
+        const dLocal = new Date(d.getTime() + 2 * 3600 * 1000); // shift to CAT day
+        const monthKey = dLocal.toISOString().slice(0, 7);
+        if (!monthKey.startsWith(String(year))) continue;
+        const m = (people[key].byMonth[monthKey] = people[key].byMonth[monthKey] || { sick: 0, personal: 0, annual: 0, other: 0 });
+        const bucket = { Sick: 'sick', Personal: 'personal', Annual: 'annual' }[l.leaveType] || 'other';
+        m[bucket] += 1;
+        people[key].total[bucket] += 1;
+      }
+    }
+
+    const rows = Object.values(people).sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ year, rows });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// GET pending approvals (rows created by the automation/bulk that are waiting
+// for an admin to approve the check-in or the check-out)
+router.get('/pending', protect, authorize('admin', 'hr', 'manager'), async (req, res) => {
+  try {
+    const rows = await Attendance.find({ approvalState: { $ne: 'approved' } })
+      .populate('employee', 'firstName lastName employeeId')
+      .sort({ date: -1 });
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// POST approve/reject pending rows
+// Body: { ids: [...recordIds], action: 'approve' | 'reject' }
+//   approve: row becomes official (approvalState 'approved')
+//   reject:  pending-checkin row → Absent; pending-checkout row → check-out
+//            cleared (record stays open for a manual re-checkout)
+router.post('/approve', protect, authorize('admin', 'hr', 'manager'), async (req, res) => {
+  try {
+    const { ids, action } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: 'No records selected' });
+    }
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ message: "action must be 'approve' or 'reject'" });
+    }
+
+    const rows = await Attendance.find({ _id: { $in: ids }, approvalState: { $ne: 'approved' } })
+      .populate('employee', 'firstName lastName');
+    if (rows.length === 0) {
+      return res.status(400).json({ message: 'No pending records matched those ids (already approved?)' });
+    }
+
+    const stamp = { approvedBy: req.user._id, approvedAt: new Date() };
+    let approvedCheckins = 0, approvedCheckouts = 0, rejectedCheckins = 0, rejectedCheckouts = 0;
+    for (const row of rows) {
+      const emp = row.employee || {};
+      const day = row.date ? new Date(row.date).toISOString().slice(0, 10) : '?';
+      if (action === 'approve') {
+        if (row.approvalState === 'pending-checkin') approvedCheckins++;
+        else approvedCheckouts++;
+        row.approvalState = 'approved';
+        Object.assign(row, stamp);
+        row.notes = (row.notes || '').replace(' — awaiting admin approval', '');
+        // check-out rejections already handled above; approvals keep times as generated
+      } else if (row.approvalState === 'pending-checkin') {
+        // Disapproved check-in → the person did not attend
+        row.status = 'Absent';
+        row.checkIn = null;
+        row.hoursWorked = 0;
+        row.approvalState = 'approved';
+        Object.assign(row, stamp);
+        row.notes = (row.notes || '') + ' · check-in disapproved by admin';
+        rejectedCheckins++;
+      } else {
+        // Disapproved check-out → clear the auto-generated clock-out time
+        row.checkOut = null;
+        row.hoursWorked = 0;
+        row.approvalState = 'approved';
+        Object.assign(row, stamp);
+        row.notes = (row.notes || '') + ' · check-out disapproved by admin';
+        rejectedCheckouts++;
+      }
+      await row.save();
+      await audit(req,
+        action === 'approve' ? 'attendance.approve' : 'attendance.disapprove',
+        `${emp.firstName || ''} ${emp.lastName || ''}`.trim(),
+        `${day} · ${action} ${action === 'approve' ? (row.checkOut ? 'check-out' : 'check-in') : (rejectedCheckouts > rejectedCheckins ? 'check-out' : 'check-in')}`);
+    }
+
+    res.json({
+      message: action === 'approve'
+        ? `Approved ${approvedCheckins} check-in(s) and ${approvedCheckouts} check-out(s)`
+        : `Rejected ${rejectedCheckins} check-in(s) (marked absent) and ${rejectedCheckouts} check-out(s)`,
+      approvedCheckins, approvedCheckouts, rejectedCheckins, rejectedCheckouts
+    });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
   }
 });
 
@@ -234,7 +362,10 @@ router.post('/checkin-all', protect, authorize('admin', 'hr', 'manager'), async 
         date: day,
         checkIn: hol.isHoliday ? null : at,
         status: hol.isHoliday ? 'Holiday' : 'Present',
-        notes: hol.isHoliday ? `Public holiday (${hol.name})` : `Bulk check-in by ${req.user.name}${atStr}`
+        notes: hol.isHoliday
+          ? `Public holiday (${hol.name})`
+          : `Bulk check-in by ${req.user.name}${atStr} — awaiting admin approval`,
+        approvalState: hol.isHoliday ? 'approved' : 'pending-checkin'
       })));
     }
     await audit(req, 'attendance.bulk-checkin', `${missing.length} employees`, `Bulk check-in for ${day.toISOString().slice(0, 10)}${req.body.checkInTime ? ` at ${req.body.checkInTime}` : ''}${onLeave.length ? `, ${onLeave.length} on leave skipped` : ''}${hol.isHoliday ? `, public holiday (${hol.name})` : ''}`);
@@ -307,6 +438,8 @@ router.post('/checkout-all', protect, authorize('admin', 'hr', 'manager'), async
     for (const record of open) {
       record.checkOut = at;
       record.hoursWorked = hoursBetween(record.checkIn, at);
+      record.approvalState = 'pending-checkout';
+      record.notes = (record.notes ? record.notes + ' · ' : '') + `Bulk check-out by ${req.user.name} — awaiting admin approval`;
       await record.save();
     }
     await audit(req, 'attendance.bulk-checkout', `${open.length} employees`, `Bulk check-out for ${day.toISOString().slice(0, 10)}`);
