@@ -89,7 +89,7 @@ const Payroll = () => {
       </div>
 
       {canEdit && wd && (
-        <div className="card" style={{ marginBottom: 16, background: '#f8fafc' }}>
+        <div className="card" style={{ marginBottom: 16, background: 'rgba(255,255,255,0.5)' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
             <strong>Working days</strong>
             <select value={wdMonth} onChange={e => setWdMonth(Number(e.target.value))}>
@@ -223,7 +223,7 @@ const Payroll = () => {
                   </div>
                 ))}
               </div>
-              <div className="card" style={{ background: '#f8fafc', marginTop: 16, marginBottom: 0 }}>
+              <div className="card" style={{ background: 'rgba(255,255,255,0.5)', marginTop: 16, marginBottom: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <strong>Net Pay:</strong>
                   <strong style={{ color: '#10b981', fontSize: 20 }}>${calcNet().toLocaleString()}</strong>

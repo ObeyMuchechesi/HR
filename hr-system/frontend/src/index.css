@@ -10,7 +10,7 @@ button { font-family: inherit; cursor: pointer; }
 img { max-width: 100%; }
 
 /* ============ Layout ============ */
-.layout { min-height: 100vh; }
+.layout { min-height: 100vh; position: relative; }
 .sidebar {
   position: fixed; inset: 0 auto 0 0; z-index: 900;
   width: 250px; background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%); color: #cbd5e1;
@@ -32,9 +32,12 @@ img { max-width: 100%; }
 
 .main { margin-left: 250px; display: flex; flex-direction: column; min-height: 100vh; }
 .navbar {
-  background: white; padding: 16px 32px; display: flex;
+  background: rgba(255,255,255,0.62);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+  padding: 16px 32px; display: flex;
   justify-content: space-between; align-items: center;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid rgba(255,255,255,0.6);
   position: sticky; top: 0; z-index: 800;
 }
 .navbar h1 { font-size: 20px; font-weight: 600; }
@@ -78,9 +81,9 @@ img { max-width: 100%; }
 /* ============ Tables: scroll on tablet, cards on phone ============ */
 .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 table { width: 100%; border-collapse: collapse; }
-th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
-th { color: #64748b; font-weight: 500; background: #f8fafc; font-size: 13px; white-space: nowrap; }
-tr:hover td { background: #f8fafc; }
+th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid rgba(148,163,184,0.25); font-size: 14px; }
+th { color: #475569; font-weight: 600; background: rgba(255,255,255,0.55); font-size: 13px; white-space: nowrap; }
+tr:hover td { background: rgba(255,255,255,0.45); }
 
 /* ============ Badges ============ */
 .badge {
@@ -132,7 +135,12 @@ tr:hover td { background: #f8fafc; }
   z-index: 1000; padding: 20px;
 }
 .modal {
-  background: white; border-radius: 16px; padding: 28px;
+  background: rgba(255,255,255,0.86);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255,255,255,0.7);
+  box-shadow: 0 24px 60px rgba(31,38,135,0.22);
+  border-radius: 16px; padding: 28px;
   width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto;
 }
 .modal h3 { margin-bottom: 20px; }
@@ -201,7 +209,7 @@ tr:hover td { background: #f8fafc; }
   }
   .table-wrap thead { display: none; }
   .table-wrap tr {
-    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    background: rgba(255,255,255,0.72); border: 1px solid rgba(255,255,255,0.65); border-radius: 12px;
     padding: 12px 14px; margin-bottom: 12px;
   }
   .table-wrap tr:hover td { background: transparent; }
@@ -217,11 +225,11 @@ tr:hover td { background: #f8fafc; }
   .table-wrap td:first-child { font-size: 15px; }
 }
 
-/* ============ Dashboard glassmorphism ============ */
+/* ============ Glassmorphism (app-wide) ============ */
 /* Soft colorful backdrop so the frosted cards have something to blur.
-   :before is a fixed layer behind the dashboard's own content. */
-.dash { position: relative; }
-.dash::before {
+   :before is a fixed layer behind the app content, so Dashboard,
+   Attendance, Payroll… all sit on the same surface. */
+.layout::before {
   content: ''; position: fixed; inset: 0; z-index: -1;
   background:
     radial-gradient(640px 420px at 12% 6%, rgba(99,102,241,0.22), transparent 62%),
@@ -236,22 +244,22 @@ tr:hover td { background: #f8fafc; }
   to   { background-position: 4% 3%, 96% 4%, 92% 92%, 6% 88%, 0 0; }
 }
 
-/* Frosted glass for every card on the dashboard */
-.dash .card, .dash .stat-card {
+/* Frosted glass for every card on every authenticated page */
+.content .card, .content .stat-card {
   background: rgba(255,255,255,0.55);
   -webkit-backdrop-filter: blur(18px) saturate(160%);
   backdrop-filter: blur(18px) saturate(160%);
   border: 1px solid rgba(255,255,255,0.65);
   box-shadow: 0 8px 32px rgba(31,38,135,0.10), inset 0 1px 0 rgba(255,255,255,0.7);
 }
-.dash .card { border-radius: 20px; }
-.dash .stat-card { border-radius: 16px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
-.dash .stat-card:hover {
+.content .card { border-radius: 20px; }
+.content .stat-card { border-radius: 16px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+.content .stat-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 14px 40px rgba(31,38,135,0.16), inset 0 1px 0 rgba(255,255,255,0.7);
 }
-.dash .stat-card .label { color: #475569; }
-.dash .card h2 { color: #1e293b; }
+.content .stat-card .label { color: #475569; }
+.content .card h2 { color: #1e293b; }
 
 /* Live indicator pill */
 .dash .live-pill {
@@ -275,13 +283,13 @@ tr:hover td { background: #f8fafc; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dash::before { animation: none; }
-  .dash .stat-card, .dash .stat-card:hover { transition: none; transform: none; }
+  .layout::before { animation: none; }
+  .content .stat-card, .content .stat-card:hover { transition: none; transform: none; }
   .dash .live-dot { animation: none; }
 }
 
 /* Mobile: keep tables readable on the glass */
 @media (max-width: 768px) {
-  .dash .table-wrap tr { background: rgba(255,255,255,0.72); border: 1px solid rgba(255,255,255,0.65); }
-  .dash .two-col .card { margin-bottom: 24px; }
+  .content .table-wrap tr { background: rgba(255,255,255,0.72); border: 1px solid rgba(255,255,255,0.65); }
+  .content .two-col .card { margin-bottom: 24px; }
 }
