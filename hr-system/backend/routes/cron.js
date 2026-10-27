@@ -144,11 +144,14 @@ router.get('/holiday-announce', authEither, async (req, res) => {
 // vercel.json schedules two weekday entries:
 //   • /api/cron/auto-attendance at 05:55 UTC (07:55 CAT) → morning pass: every
 //     active employee without a record today is checked in at exactly 07:55
-//     (on-leave staff and public holidays are skipped; weekends never trigger).
-//     On Fridays a weekly attendance summary is generated right afterwards.
-//   • /api/cron/evening-close at 22:00 UTC → evening pass: every still-open
-//     check-in is closed at 16:00 CAT (8.08h) and everyone with no record at
-//     all is marked Absent, then the daily summary notification goes out.
+//     as 'pending-checkin' (on-leave staff and public holidays are skipped;
+//     weekends never trigger). On Fridays a weekly attendance summary is
+//     generated right afterwards.
+//   • /api/cron/evening-close at 22:00 UTC → evening pass: still-open approved
+//     check-ins are closed at 16:00 CAT (8.08h) as 'pending-checkout';
+//     pending check-in approvals are NOT auto-resolved — the admin approves
+//     or rejects them with a reason; everyone with no record at all is marked
+//     Absent; then the daily summary notification goes out.
 // Everything is idempotent, so manual re-triggers and retries are safe.
 // ---------------------------------------------------------------------------
 
@@ -227,8 +230,7 @@ const runWeeklySummary = async (day) => {
       hours: { $sum: { $ifNull: ['$hoursWorked', 0] } }
     } }
   ]);
-  const staff = await Employee.find({}).select('firstName lastName').lean();
-  const names = {};
+  const staff = await Employee.find({}).select('firstName lastName').lean();  const names = {};
   staff.forEach(e => { names[e._id.toString()] = `${e.firstName} ${e.lastName}`; });
   const leaveThisWeek = await Leave.find({ status: 'Approved', startDate: { $lt: rangeEnd }, endDate: { $gte: monday } }).lean();
   const leaveByEmp = {};
@@ -260,26 +262,17 @@ const runWeeklySummary = async (day) => {
 };
 
 // Evening pass:
-//  • check-ins still awaiting approval at end of business become Absent
-//    (they were never approved, so they never happened)
 //  • approved open check-ins are closed at 16:00 CAT, recorded as
 //    'pending-checkout' awaiting admin approval
+//  • check-ins still awaiting approval are LEFT pending — the admin decides
+//    them (approve or reject with a reason); nothing is auto-generated or
+//    auto-deleted
+//  • everyone with no record at all is marked Absent
 //  • daily summary notification goes out
 const runEveningClose = async (day) => {
-  // 1. unresolved check-in approvals → Absent
-  const unapproved = await Attendance.find({ date: day, approvalState: 'pending-checkin' }).lean();
-  for (const record of unapproved) {
-    await Attendance.updateOne(
-      { _id: record._id },
-      {
-        status: 'Absent',
-        checkIn: null,
-        hoursWorked: 0,
-        approvalState: 'approved',
-        notes: (record.notes ? record.notes + ' · ' : '') + 'Not approved by close of business — marked absent'
-      }
-    );
-  }
+  // 1. check-ins still awaiting approval stay pending for the admin —
+  //    explicitly NOT converted to absent automatically.
+  const stillPending = await Attendance.countDocuments({ date: day, approvalState: 'pending-checkin' });
 
   // 2. check-out everyone approved and still open (skip on-leave staff — leave has no records)
   const open = await Attendance.find({
@@ -323,7 +316,6 @@ const runEveningClose = async (day) => {
       link: '/attendance'
     });
   }
-
   // 4. daily close-of-business summary (same as the old 22:00 mark-absents cron)
   const present = await Attendance.countDocuments({ date: day, status: 'Present', approvalState: { $ne: 'pending-checkin' } });
   const late = await Attendance.countDocuments({ date: day, status: 'Late' });
@@ -331,7 +323,7 @@ const runEveningClose = async (day) => {
   const absent = await Attendance.countDocuments({ date: day, status: 'Absent' });
   const holiday = await Attendance.countDocuments({ date: day, status: 'Holiday' });
   const hol = holidayInfo(day);
-  const summaryText = `Present ${present} · Late ${late} · Remote ${remote} · Absent ${absent} · Holiday ${holiday} · On leave ${onLeaveIds.length}${hol.isHoliday ? ` — ${hol.name} 🇿🇼` : ''}`;
+  const summaryText = `Present ${present} · Late ${late} · Remote ${remote} · Absent ${absent} · Holiday ${holiday} · On leave ${onLeaveIds.length}${stillPending ? ` · check-ins awaiting your approval: ${stillPending}` : ''}${hol.isHoliday ? ` — ${hol.name} 🇿🇼` : ''}`;
   await notify({
     roles: ['admin', 'hr'],
     title: `Daily attendance summary — ${day.toISOString().slice(0, 10)}`,
@@ -341,9 +333,9 @@ const runEveningClose = async (day) => {
   });
   await AuditLog.create({
     actorName: 'automation', action: 'attendance.auto-close', target: day.toISOString().slice(0, 10),
-    details: `Unapproved check-ins flipped to absent: ${unapproved.length} · check-outs pending approval: ${closed} · marked absent: ${missing.length}${hol.isHoliday ? ` · public holiday (${hol.name})` : ''}`
+    details: `Check-ins left awaiting approval: ${stillPending} · check-outs pending approval: ${closed} · marked absent: ${missing.length}${hol.isHoliday ? ` · public holiday (${hol.name})` : ''}`
   });
-  return { checkedOut: closed, pendingCheckinsExpired: unapproved.length, markedAbsent: missing.length, onLeaveSkipped: onLeaveIds.length };
+  return { checkedOut: closed, pendingCheckinsStillPending: stillPending, markedAbsent: missing.length, onLeaveSkipped: onLeaveIds.length };
 };
 
 // GET /api/cron/auto-attendance  — MORNING pass (07:55 CAT check-in).
@@ -400,7 +392,7 @@ router.get('/evening-close', authEither, async (req, res) => {
     const result = await runEveningClose(day);
     return res.json({
       pass: 'evening',
-      message: `${result.pendingCheckinsExpired} unapproved check-in(s) → absent, closed ${result.checkedOut} record(s) at 16:00 CAT, marked ${result.markedAbsent} absent${result.onLeaveSkipped ? `, ${result.onLeaveSkipped} on leave skipped` : ''}`,
+      message: `${result.pendingCheckinsStillPending} check-in(s) still awaiting approval (left for you to decide), closed ${result.checkedOut} record(s) at 16:00 CAT, marked ${result.markedAbsent} absent${result.onLeaveSkipped ? `, ${result.onLeaveSkipped} on leave skipped` : ''}`,
       ...result
     });
   } catch (error) {

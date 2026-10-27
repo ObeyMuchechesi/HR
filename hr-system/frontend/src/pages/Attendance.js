@@ -32,6 +32,8 @@ const Attendance = () => {
   const [editForm, setEditForm] = useState({ date: '', checkInTime: '', checkOutTime: '', status: '' });
   const [dateFilter, setDateFilter] = useState('');
   const [pending, setPending] = useState([]);
+  const [rejectTarget, setRejectTarget] = useState(null); // { ids, label, kind } — opens the reason dialog
+  const [rejectForm, setRejectForm] = useState({ reason: 'Absent', note: '' });
   const [msg, setMsg] = useState(null);
 
   const load = useCallback(async () => {
@@ -44,14 +46,28 @@ const Attendance = () => {
     }
   }, [dateFilter, user?.role]);
 
-  const decidePending = async (ids, action) => {
+  const decidePending = async (ids, action, reason) => {
     try {
-      const { data } = await api.post('/attendance/approve', { ids, action });
+      const { data } = await api.post('/attendance/approve', { ids, action, reason: reason || undefined });
       flash(data.message);
       load();
     } catch (err) {
       alert(err.response?.data?.message || 'Error');
     }
+  };
+
+  const openReject = (ids, label, kind) => {
+    setRejectForm({ reason: 'Absent', note: '' });
+    setRejectTarget({ ids, label, kind });
+  };
+
+  const handleReject = async (e) => {
+    e.preventDefault();
+    const { reason, note } = rejectForm;
+    const full = note.trim() ? `${reason}: ${note.trim()}` : reason;
+    const target = rejectTarget;
+    setRejectTarget(null);
+    await decidePending(target.ids, 'reject', full);
   };
 
   useEffect(() => {
@@ -232,6 +248,14 @@ const Attendance = () => {
                 disabled={!pending.some(r => r.approvalState === 'pending-checkout')}
                 onClick={() => decidePending(pending.filter(r => r.approvalState === 'pending-checkout').map(r => r._id), 'approve')}
               >🚪 Approve all check-outs</button>
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={!pending.some(r => r.approvalState === 'pending-checkin')}
+                onClick={() => {
+                  const ids = pending.filter(r => r.approvalState === 'pending-checkin').map(r => r._id);
+                  openReject(ids, `${ids.length} check-in(s)`, 'checkin');
+                }}
+              >❌ Reject all check-ins</button>
             </div>
           </div>
           <div className="table-wrap" style={{ marginTop: 10 }}>
@@ -259,7 +283,7 @@ const Attendance = () => {
                     <td data-label="Notes" style={{ maxWidth: 320 }}>{r.notes}</td>
                     <td data-label="Actions">
                       <button className="btn btn-primary btn-sm" onClick={() => decidePending([r._id], 'approve')}>Approve</button>
-                      <button className="btn btn-secondary btn-sm" style={{ marginLeft: 6 }} onClick={() => decidePending([r._id], 'reject')}>Reject</button>
+                      <button className="btn btn-secondary btn-sm" style={{ marginLeft: 6 }} onClick={() => openReject([r._id], `${r.employee?.firstName || ''} ${r.employee?.lastName || ''}`.trim(), r.approvalState === 'pending-checkin' ? 'checkin' : 'checkout')}>Reject</button>
                     </td>
                   </tr>
                 ))}
@@ -305,6 +329,33 @@ const Attendance = () => {
           </div>
         )}
       </div>
+
+      {rejectTarget && (
+        <Modal title={`Reject ${rejectTarget.label}`} onClose={() => setRejectTarget(null)}>
+          <form onSubmit={handleReject}>
+            <div className="form-group">
+              <label>Reason</label>
+              <select value={rejectForm.reason} onChange={e => setRejectForm({ ...rejectForm, reason: e.target.value })}>
+                <option>Absent</option>
+                <option>Sick</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Extra detail (optional)</label>
+              <textarea value={rejectForm.note} onChange={e => setRejectForm({ ...rejectForm, note: e.target.value })} rows="2" placeholder="any extra context (optional)…" />
+            </div>
+            <div className="form-group">
+              <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
+                {rejectTarget.kind === 'checkin'
+                  ? 'Rejected check-ins are marked Absent with this reason and the proposed check-in time is discarded.'
+                  : 'Rejected check-outs have the proposed 16:00 clock-out removed so you can record the real time.'}
+              </p>
+            </div>
+            <ModalActions onClose={() => setRejectTarget(null)} submitLabel={`Reject (${rejectTarget.label})`} />
+          </form>
+        </Modal>
+      )}
 
       {showBulkCheckin && (
         <Modal title="Check In Everyone" onClose={() => setShowBulkCheckin(false)}>

@@ -1,7 +1,8 @@
 /* Local end-to-end test of the check-in/out approval flow against a running
- * server on :5001. Uses Lisa's real attendance row for TODAY, temporarily
- * flips it through pending-checkin / pending-checkout states, exercises the
- * HTTP endpoints, and restores the row exactly at the end.
+ * server on :5001. Anchors on Lisa's attendance row for TODAY: if none exists
+ * (e.g. run before the morning pass) a temporary one is created and deleted
+ * again at the end; otherwise her real row is flipped through
+ * pending-checkin / pending-checkout states and restored exactly at the end.
  *
  * Usage: node scripts/test-approval-flow.js  (server must be running)
  */
@@ -34,11 +35,20 @@ let failed = false;
   const emp = (await http.post('/auth/login', { email: 'lisa@callcentral.com', password: 'Password123' })).data.token;
   assert(!!admin && !!emp, 'login as admin + employee works');
 
-  // Lisa's row for today
+  // Lisa's row for today (created temporarily if the morning pass hasn't run)
   const day = new Date(new Date().setUTCHours(0, 0, 0, 0));
   const lisa = await Employee.findOne({ firstName: 'Lisa' });
-  const rowDoc = await Attendance.findOne({ employee: lisa._id, date: day });
-  assert(!!rowDoc, "found Lisa's row for today");
+  let rowDoc = await Attendance.findOne({ employee: lisa._id, date: day });
+  let madeRow = false;
+  if (!rowDoc) {
+    rowDoc = await Attendance.create({
+      employee: lisa._id, date: day, checkIn: new Date(day.getTime() + 5 * 3600e3 + 55 * 60e3),
+      checkOut: null, status: 'Present', hoursWorked: 0,
+      notes: 'TEMPORARY test row (delete at end)', approvalState: 'approved'
+    });
+    madeRow = true;
+  }
+  assert(!!rowDoc, madeRow ? "created a temporary row for Lisa today (none existed)" : "found Lisa's row for today");
   const original = rowDoc.toObject();
   const id = rowDoc._id;
 
@@ -49,15 +59,15 @@ let failed = false;
   const empForbidden = (await http.post('/attendance/approve', { ids: [id], action: 'approve' }, emp)).status === 403;
   assert(empForbidden, 'employee is rejected (403) on /approve');
 
-  // --- 2. pending-checkin: excluded from present count; approve + reject work
-  // Compute the baseline (approved present rows for today) and make Lisa's row
-  // a Present one for the duration of the test so the exclusion is observable.
+  // --- 2. pending-checkin: excluded from present count; approve works
+  // Baseline = what summary/today reports as approved&present for today.
   const baseline = await Attendance.countDocuments({ date: day, status: 'Present', approvalState: { $ne: 'pending-checkin' } });
   assert((await http.get('/attendance/summary/today', admin)).data.present === baseline, `summary/today matches DB baseline (${baseline})`);
 
-  await Attendance.updateOne({ _id: id }, { approvalState: 'pending-checkin', status: 'Present' });
+  await Attendance.updateOne({ _id: id }, { approvalState: 'pending-checkin' });
   const sum = (await http.get('/attendance/summary/today', admin)).data;
-  assert(sum.present === baseline, `summary/today excludes pending check-ins (present=${sum.present}, baseline=${baseline})`);
+  const wasPresent = original.status === 'Present';
+  assert(sum.present === baseline - (wasPresent ? 1 : 0), `summary/today excludes pending check-ins (present=${sum.present}, baseline=${baseline})`);
 
   const list = (await http.get('/attendance/pending', admin)).data;
   assert(list.some(r => String(r._id) === String(id) && r.approvalState === 'pending-checkin'), 'pending list shows the pending-checkin row');
@@ -70,18 +80,24 @@ let failed = false;
   let after = await Attendance.findById(id).lean();
   assert(after.approvalState === 'approved', 'row is approved after approve');
   const sumAfter = (await http.get('/attendance/summary/today', admin)).data;
-  assert(sumAfter.present === baseline + 1, `approved row counts as present again (${sumAfter.present})`);
+  assert(sumAfter.present === baseline - (wasPresent ? 0 : 1), `approved row counts as present again (${sumAfter.present})`);
 
-  // --- 3. pending-checkout: reject clears the check-out
+  // --- 3. rejection requires a reason; reason is stored on the row
   await Attendance.updateOne({ _id: id }, { approvalState: 'pending-checkout' });
   const rerolled = await Attendance.findById(id);
-  rerolled.checkOut = new Date(day.getTime() + 14 * 3600e3);
-  rerolled.hoursWorked = 8.08;
-  await rerolled.save();
-  const rej = (await http.post('/attendance/approve', { ids: [id], action: 'reject' }, admin)).data;
+  if (!rerolled.checkOut) {
+    rerolled.checkOut = new Date(day.getTime() + 14 * 3600e3);
+    rerolled.hoursWorked = 8.08;
+    await rerolled.save();
+  }
+  const noReason = await http.post('/attendance/approve', { ids: [id], action: 'reject' }, admin);
+  assert(noReason.status === 400, 'reject without a reason is a 400');
+
+  const rej = (await http.post('/attendance/approve', { ids: [id], action: 'reject', reason: 'Sick' }, admin)).data;
   assert(rej.rejectedCheckouts === 1, `reject clears the check-out (${rej.message})`);
   after = await Attendance.findById(id).lean();
-  assert(!after.checkOut && after.approvalState === 'approved', 'check-out cleared, row approved (open for manual re-checkout)');
+  assert(!after.checkOut && after.approvalState === 'approved' && after.rejectionReason === 'Sick',
+    'check-out cleared, row approved, reason "Sick" stored');
 
   // --- leave summary
   const ls = (await http.get('/attendance/leave-summary?year=2026', admin)).data;
@@ -89,20 +105,28 @@ let failed = false;
   assert(ls.rows.length >= 5 && !!lisaLeave, `leave-summary returns ${ls.rows.length} person(s) for 2026`);
   console.log('   Lisa 2026 totals:', JSON.stringify(lisaLeave && lisaLeave.total));
 
-  // --- restore Lisa's row + clean audit noise from the test
-  await Attendance.updateOne({ _id: id }, {
-    $set: {
-      employee: original.employee, date: original.date, checkIn: original.checkIn,
-      checkOut: original.checkOut, status: original.status, hoursWorked: original.hoursWorked,
-      notes: original.notes, approvalState: 'approved'
-    },
-    $unset: { approvedBy: 1, approvedAt: 1 }
-  });
-  await AuditLog.deleteMany({ action: { $in: ['attendance.approve', 'attendance.disapprove'] }, createdAt: { $gte: start } });
+  // --- clean up: temporary row is deleted, a real row is restored exactly
+  if (madeRow) {
+    await Attendance.deleteOne({ _id: id });
+    assert(!(await Attendance.findOne({ employee: lisa._id, date: day })), 'temporary row deleted');
+  } else {
+    await Attendance.updateOne({ _id: id }, {
+      $set: {
+        employee: original.employee, date: original.date, checkIn: original.checkIn,
+        checkOut: original.checkOut, status: original.status, hoursWorked: original.hoursWorked,
+        notes: original.notes, approvalState: 'approved'
+      },
+      $unset: { approvedBy: 1, approvedAt: 1, ...(original.rejectionReason ? {} : { rejectionReason: 1 }) }
+    });
+    const restored = await Attendance.findById(id).lean();
+    assert(String(restored.checkOut) === String(original.checkOut) && restored.status === original.status && restored.approvalState === original.approvalState,
+      "RESTORED: Lisa's row back to exactly its original state");
+  }
+  // Clean audit noise created by the test run itself (never by automation).
+  if (!madeRow) {
+    await AuditLog.deleteMany({ action: { $in: ['attendance.approve', 'attendance.disapprove'] }, createdAt: { $gte: start } });
+  }
 
-  const restored = await Attendance.findById(id).lean();
-  assert(String(restored.checkOut) === String(original.checkOut) && restored.status === original.status && restored.approvalState === original.approvalState,
-    "RESTORED: Lisa's row back to exactly its original state");
   const leftPending = await Attendance.countDocuments({ approvalState: { $exists: true, $ne: 'approved' } });
   assert(leftPending === 0, `no pending rows left behind (${leftPending})`);
 

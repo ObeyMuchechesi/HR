@@ -82,7 +82,7 @@ All routes except `/api/auth/register` and `/api/auth/login` require a
 | Employees | CRUD + `GET /stats/dashboard` |
 | Departments | CRUD (delete: admin only) |
 | Leaves | list/create, approve/reject (single-approval), delete (admin/hr) |
-| Attendance | list (self-scoped for employees), check-in, check-out, manual entry & check-out, check-in/check-out everyone (date + time), `GET /summary/today`, `GET /pending` + `POST /approve` (admin approval queue for auto check-ins/outs), `GET /leave-summary` (per-person leave days per year, admin/hr/manager) |
+| Attendance | list (self-scoped for employees), check-in, check-out, manual entry & check-out, check-in/check-out everyone (date + time), `GET /summary/today`, `GET /pending` + `POST /approve` (admin approval queue; rejects require a reason — Absent / Sick / Other), `GET /leave-summary` (per-person leave days per year, admin/hr/manager) |
 | Payroll | list (self-scoped for employees), generate, mark paid (with payment date) |
 
 ## Attendance automation (Vercel Cron)
@@ -97,10 +97,11 @@ cron to fire at most once per day, so morning and evening are separate):
   Zimbabwe public holidays are skipped entirely (no check-in is even
   proposed); weekends never trigger.
 - **`0 22 * * 1-5` → `GET /api/cron/evening-close` (22:00 UTC) — evening pass:**
-  check-ins that are still awaiting approval at end of business become
-  **Absent**; still-open approved check-ins get closed at **16:00 CAT** (8.08h)
-  as **`pending-checkout`** for approval; everyone with no record at all is
-  marked **Absent**; then the daily summary notification goes out.
+  still-open approved check-ins get closed at **16:00 CAT** (8.08h) as
+  **`pending-checkout`** for approval; check-ins still awaiting approval are
+  **left pending** (never auto-converted — the admin decides each one);
+  everyone with no record at all is marked **Absent**; then the daily summary
+  notification goes out.
 - **Fridays:** right after the morning pass, a **weekly attendance summary**
   notification (in-app + email) listing every person's approved present days,
   hours worked, and leave for Mon → Fri goes to admin/hr/manager **and all

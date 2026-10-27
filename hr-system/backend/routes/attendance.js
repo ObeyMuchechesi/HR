@@ -179,18 +179,23 @@ router.get('/pending', protect, authorize('admin', 'hr', 'manager'), async (req,
 });
 
 // POST approve/reject pending rows
-// Body: { ids: [...recordIds], action: 'approve' | 'reject' }
+// Body: { ids: [...recordIds], action: 'approve' | 'reject', reason?: string }
 //   approve: row becomes official (approvalState 'approved')
 //   reject:  pending-checkin row → Absent; pending-checkout row → check-out
-//            cleared (record stays open for a manual re-checkout)
+//            cleared (record stays open for a manual re-checkout).
+//            A reason is required (e.g. 'Absent', 'Sick') and stored on the row.
 router.post('/approve', protect, authorize('admin', 'hr', 'manager'), async (req, res) => {
   try {
-    const { ids, action } = req.body;
+    const { ids, action, reason } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ message: 'No records selected' });
     }
     if (!['approve', 'reject'].includes(action)) {
       return res.status(400).json({ message: "action must be 'approve' or 'reject'" });
+    }
+    const rejectionReason = typeof reason === 'string' ? reason.trim() : '';
+    if (action === 'reject' && !rejectionReason) {
+      return res.status(400).json({ message: 'A reason is required to reject (e.g. Absent, Sick)' });
     }
 
     const rows = await Attendance.find({ _id: { $in: ids }, approvalState: { $ne: 'approved' } })
@@ -212,34 +217,38 @@ router.post('/approve', protect, authorize('admin', 'hr', 'manager'), async (req
         row.notes = (row.notes || '').replace(' — awaiting admin approval', '');
         // check-out rejections already handled above; approvals keep times as generated
       } else if (row.approvalState === 'pending-checkin') {
-        // Disapproved check-in → the person did not attend
+        // Disapproved check-in → the person did not attend, with the admin's reason
         row.status = 'Absent';
         row.checkIn = null;
         row.hoursWorked = 0;
         row.approvalState = 'approved';
+        row.rejectionReason = rejectionReason;
         Object.assign(row, stamp);
-        row.notes = (row.notes || '') + ' · check-in disapproved by admin';
+        row.notes = (row.notes || '') + ` · check-in rejected (${rejectionReason}) by admin`;
         rejectedCheckins++;
       } else {
         // Disapproved check-out → clear the auto-generated clock-out time
         row.checkOut = null;
         row.hoursWorked = 0;
         row.approvalState = 'approved';
+        row.rejectionReason = rejectionReason;
         Object.assign(row, stamp);
-        row.notes = (row.notes || '') + ' · check-out disapproved by admin';
+        row.notes = (row.notes || '') + ` · check-out rejected (${rejectionReason}) by admin`;
         rejectedCheckouts++;
       }
       await row.save();
       await audit(req,
         action === 'approve' ? 'attendance.approve' : 'attendance.disapprove',
         `${emp.firstName || ''} ${emp.lastName || ''}`.trim(),
-        `${day} · ${action} ${action === 'approve' ? (row.checkOut ? 'check-out' : 'check-in') : (rejectedCheckouts > rejectedCheckins ? 'check-out' : 'check-in')}`);
+        action === 'approve'
+          ? `${day} · approved ${row.approvalState === 'approved' && row.checkOut ? 'check-out' : 'check-in'}`
+          : `${day} · rejected (${rejectionReason})`);
     }
 
     res.json({
       message: action === 'approve'
         ? `Approved ${approvedCheckins} check-in(s) and ${approvedCheckouts} check-out(s)`
-        : `Rejected ${rejectedCheckins} check-in(s) (marked absent) and ${rejectedCheckouts} check-out(s)`,
+        : `Rejected ${rejectedCheckins} check-in(s) and ${rejectedCheckouts} check-out(s) (${rejectionReason})`,
       approvedCheckins, approvedCheckouts, rejectedCheckins, rejectedCheckouts
     });
   } catch (error) {

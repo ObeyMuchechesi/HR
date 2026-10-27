@@ -22,7 +22,10 @@ const attendanceSchema = new mongoose.Schema({
     default: 'approved'
   },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  approvedAt: { type: Date }
+  approvedAt: { type: Date },
+  // Admin's reason for disapproving a proposed check-in/check-out:
+  // 'Absent' (they didn't attend), 'Sick' (called in sick) or free text.
+  rejectionReason: { type: String }
 }, { timestamps: true });
 
 attendanceSchema.index({ employee: 1, date: 1 }, { unique: true });
