@@ -216,3 +216,72 @@ tr:hover td { background: #f8fafc; }
   }
   .table-wrap td:first-child { font-size: 15px; }
 }
+
+/* ============ Dashboard glassmorphism ============ */
+/* Soft colorful backdrop so the frosted cards have something to blur.
+   :before is a fixed layer behind the dashboard's own content. */
+.dash { position: relative; }
+.dash::before {
+  content: ''; position: fixed; inset: 0; z-index: -1;
+  background:
+    radial-gradient(640px 420px at 12% 6%, rgba(99,102,241,0.22), transparent 62%),
+    radial-gradient(520px 400px at 88% 0%, rgba(236,72,153,0.16), transparent 62%),
+    radial-gradient(600px 440px at 80% 82%, rgba(56,189,248,0.18), transparent 62%),
+    radial-gradient(500px 400px at 20% 92%, rgba(52,211,153,0.15), transparent 62%),
+    linear-gradient(180deg, #f5f7fb 0%, #eef2ff 100%);
+  animation: dash-drift 26s ease-in-out infinite alternate;
+}
+@keyframes dash-drift {
+  from { background-position: 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0 0; }
+  to   { background-position: 4% 3%, 96% 4%, 92% 92%, 6% 88%, 0 0; }
+}
+
+/* Frosted glass for every card on the dashboard */
+.dash .card, .dash .stat-card {
+  background: rgba(255,255,255,0.55);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(255,255,255,0.65);
+  box-shadow: 0 8px 32px rgba(31,38,135,0.10), inset 0 1px 0 rgba(255,255,255,0.7);
+}
+.dash .card { border-radius: 20px; }
+.dash .stat-card { border-radius: 16px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+.dash .stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 40px rgba(31,38,135,0.16), inset 0 1px 0 rgba(255,255,255,0.7);
+}
+.dash .stat-card .label { color: #475569; }
+.dash .card h2 { color: #1e293b; }
+
+/* Live indicator pill */
+.dash .live-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 999px;
+  font-size: 12px; font-weight: 500; color: #475569;
+  background: rgba(255,255,255,0.55);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid rgba(255,255,255,0.65);
+  box-shadow: 0 4px 16px rgba(31,38,135,0.08);
+}
+.dash .live-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #10b981;
+  animation: live-pulse 2.2s infinite;
+}
+@keyframes live-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(16,185,129,0.45); }
+  70%  { box-shadow: 0 0 0 8px rgba(16,185,129,0); }
+  100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash::before { animation: none; }
+  .dash .stat-card, .dash .stat-card:hover { transition: none; transform: none; }
+  .dash .live-dot { animation: none; }
+}
+
+/* Mobile: keep tables readable on the glass */
+@media (max-width: 768px) {
+  .dash .table-wrap tr { background: rgba(255,255,255,0.72); border: 1px solid rgba(255,255,255,0.65); }
+  .dash .two-col .card { margin-bottom: 24px; }
+}

@@ -64,9 +64,14 @@ const Dashboard = () => {
   };
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>
-        {updatedAt && <>Live · updated {updatedAt.toLocaleTimeString()}</>}
+    <div className="dash">
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        {updatedAt && (
+          <span className="live-pill">
+            <span className="live-dot" />
+            Live · updated {updatedAt.toLocaleTimeString()}
+          </span>
+        )}
       </div>
 
       <div className="stats-grid">
